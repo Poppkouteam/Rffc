@@ -1,0 +1,1654 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Авиасимулятор — Pro Edition</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Courier New', monospace; color: #00ff88; touch-action: none; overscroll-behavior: none; position: fixed; inset: 0; }
+  #canvas-container { position: fixed; inset: 0; touch-action: none; }
+  canvas { display: block; touch-action: none; }
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; font-family: 'Courier New', monospace; color: #00ff88; text-shadow: 0 0 8px rgba(0, 255, 136, 0.6); }
+  .hud-panel { background: rgba(0, 20, 10, 0.35); border: 1px solid rgba(0, 255, 136, 0.35); border-radius: 6px; padding: 8px 12px; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+  
+  .hud-horizon { 
+    position: absolute; top: 20px; left: 20px;
+    width: 140px; height: 140px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 3px solid #333;
+    background: #000;
+    z-index: 11;
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
+  }
+  .horizon-inner {
+    position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+    background-size: cover;
+    transition: transform 0.05s linear;
+  }
+  .horizon-aircraft {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100px; height: 60px;
+    pointer-events: none;
+    z-index: 12;
+  }
+  .h-wing-l { position: absolute; top: 50%; right: 50%; width: 35px; height: 3px; background: #ffcc00; transform-origin: right center; transform: translateY(-50%) rotate(15deg); box-shadow: 0 0 4px #000; }
+  .h-wing-r { position: absolute; top: 50%; left: 50%; width: 35px; height: 3px; background: #ffcc00; transform-origin: left center; transform: translateY(-50%) rotate(-15deg); box-shadow: 0 0 4px #000; }
+  .h-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 10px; height: 10px; border: 2px solid #ffcc00; border-radius: 50%; background: rgba(0,0,0,0.5); box-shadow: 0 0 4px #000; }
+
+  .hud-left { position: absolute; top: 20px; left: 180px; min-width: 160px; }
+  .hud-right { position: absolute; top: 20px; right: 20px; min-width: 160px; text-align: right; }
+  .hud-bottom { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; font-size: 12px; opacity: 0.7; }
+  .hud-label { font-size: 10px; letter-spacing: 2px; opacity: 0.7; margin-bottom: 2px; }
+  .hud-value { font-size: 22px; font-weight: bold; letter-spacing: 1px; }
+  .hud-unit { font-size: 11px; opacity: 0.6; margin-left: 4px; }
+  .hud-row { margin-bottom: 10px; }
+  .hud-row:last-child { margin-bottom: 0; }
+  .throttle-bar { width: 100%; height: 6px; background: rgba(0, 255, 136, 0.1); border: 1px solid rgba(0, 255, 136, 0.3); margin-top: 4px; overflow: hidden; }
+  .throttle-fill { height: 100%; background: linear-gradient(90deg, #00ff88, #ffff00); transition: width 0.1s; box-shadow: 0 0 8px rgba(0, 255, 136, 0.8); }
+  .aoa-bar { width: 100%; height: 6px; background: rgba(0, 255, 136, 0.1); border: 1px solid rgba(0, 255, 136, 0.3); margin-top: 4px; overflow: hidden; position: relative; }
+  .aoa-fill { height: 100%; background: linear-gradient(90deg, #00ff88, #ff6600, #ff0000); transition: width 0.1s; }
+  .aoa-marker { position: absolute; top: -2px; width: 2px; height: 10px; background: #fff; left: 75%; }
+  .warning { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); font-size: 32px; font-weight: bold; color: #ff3333; text-shadow: 0 0 20px rgba(255, 50, 50, 0.8); letter-spacing: 4px; animation: blink 0.4s infinite; display: none; }
+  .warning.active { display: block; }
+  @keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0.2; } }
+  .crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 30px; height: 30px; pointer-events: none; }
+  .crosshair::before, .crosshair::after { content: ''; position: absolute; background: rgba(0, 255, 136, 0.6); }
+  .crosshair::before { top: 50%; left: 0; width: 100%; height: 1px; transform: translateY(-50%); }
+  .crosshair::after { left: 50%; top: 0; width: 1px; height: 100%; transform: translateX(-50%); }
+  .left-controls { position: absolute; bottom: 30px; left: 30px; display: none; flex-direction: column; align-items: center; pointer-events: auto; gap: 15px; }
+  .joystick { width: 140px; height: 140px; border-radius: 50%; background: rgba(0, 30, 20, 0.35); border: 2px solid rgba(0, 255, 136, 0.4); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); touch-action: none; pointer-events: auto; }
+  .joystick-knob { position: absolute; width: 60px; height: 60px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, rgba(0, 255, 136, 0.6), rgba(0, 255, 136, 0.2)); border: 2px solid rgba(0, 255, 136, 0.8); box-shadow: 0 0 15px rgba(0, 255, 136, 0.5); top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+  .joystick-label { position: absolute; top: -22px; left: 50%; transform: translateX(-50%); font-size: 10px; letter-spacing: 2px; color: rgba(0, 255, 136, 0.7); white-space: nowrap; }
+  .right-controls { position: absolute; bottom: 30px; right: 30px; display: none; flex-direction: column; align-items: flex-end; pointer-events: auto; gap: 15px; }
+  .action-buttons-right { display: flex; flex-direction: row; gap: 15px; }
+  .action-btn { width: 64px; height: 64px; border-radius: 50%; background: rgba(0, 30, 20, 0.4); border: 2px solid rgba(0, 255, 136, 0.5); color: #00ff88; font-family: 'Courier New', monospace; font-size: 10px; font-weight: bold; letter-spacing: 1px; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); cursor: pointer; display: flex; align-items: center; justify-content: center; text-shadow: 0 0 6px rgba(0, 255, 136, 0.6); box-shadow: 0 0 10px rgba(0, 255, 136, 0.2); transition: all 0.1s; }
+  .action-btn:active, .action-btn.pressed { background: rgba(0, 255, 136, 0.3); border-color: #00ff88; box-shadow: 0 0 20px rgba(0, 255, 136, 0.6); transform: scale(0.95); }
+  .action-btn.brake { border-color: rgba(255, 100, 100, 0.5); color: #ff6666; text-shadow: 0 0 6px rgba(255, 100, 100, 0.6); }
+  .action-btn.brake:active, .action-btn.brake.pressed { background: rgba(255, 100, 100, 0.3); border-color: #ff6666; box-shadow: 0 0 20px rgba(255, 100, 100, 0.6); }
+  .action-btn.view { border-color: rgba(100, 180, 255, 0.5); color: #64b4ff; text-shadow: 0 0 6px rgba(100, 180, 255, 0.6); }
+  .action-btn.level { width: 80px; height: 40px; border-radius: 20px; font-size: 10px; border-color: rgba(100, 255, 180, 0.6); }
+  /* НОВАЯ КНОПКА FIRE */
+  .action-btn.fire { border-color: rgba(255, 50, 50, 0.6); color: #ff3333; text-shadow: 0 0 6px rgba(255, 50, 50, 0.6); font-size: 12px; }
+  .action-btn.fire:active, .action-btn.fire.pressed { background: rgba(255, 50, 50, 0.3); border-color: #ff3333; box-shadow: 0 0 20px rgba(255, 50, 50, 0.6); }
+
+  .yaw-buttons { display: flex; flex-direction: row; gap: 15px; }
+  .yaw-btn { width: 56px; height: 56px; border-radius: 50%; background: rgba(0, 30, 20, 0.4); border: 2px solid rgba(100, 180, 255, 0.5); color: #64b4ff; font-size: 24px; font-weight: bold; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); touch-action: none; user-select: none; cursor: pointer; }
+  .yaw-btn:active, .yaw-btn.pressed { background: rgba(100, 180, 255, 0.3); border-color: #64b4ff; box-shadow: 0 0 15px rgba(100, 180, 255, 0.6); transform: scale(0.95); }
+  .throttle-container { display: flex; flex-direction: column; align-items: center; }
+  .throttle-label { font-size: 10px; letter-spacing: 2px; color: rgba(0,255,136,0.7); margin-bottom: 4px; }
+  .throttle-track { width: 50px; height: 160px; background: rgba(0, 20, 10, 0.4); border: 2px solid rgba(0, 255, 136, 0.4); border-radius: 25px; position: relative; touch-action: none; }
+  .throttle-handle { width: 60px; height: 36px; background: linear-gradient(180deg, rgba(0,255,136,0.9), rgba(0,255,136,0.4)); border: 2px solid #00ff88; border-radius: 8px; position: absolute; left: 50%; transform: translateX(-50%); bottom: 0%; box-shadow: 0 0 12px rgba(0,255,136,0.6); pointer-events: none; }
+  .throttle-value { font-size: 14px; font-weight: bold; margin-top: 6px; color: #00ff88; }
+  
+  /* Счетчик ракет */
+  .ammo-counter {
+    font-size: 12px; color: #ff3333; margin-top: 4px; font-weight: bold;
+    text-shadow: 0 0 4px rgba(255, 50, 50, 0.5);
+  }
+
+  .top-center-controls { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; pointer-events: auto; flex-wrap: wrap; justify-content: center; max-width: 90%; }
+  .top-btn { padding: 6px 14px; background: rgba(0, 30, 20, 0.4); border: 1px solid rgba(0, 255, 136, 0.4); border-radius: 4px; color: #00ff88; font-family: 'Courier New', monospace; font-size: 11px; letter-spacing: 2px; cursor: pointer; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); display: none; transition: all 0.2s; white-space: nowrap; }
+  .top-btn:hover { background: rgba(0, 255, 136, 0.2); }
+  .top-btn.restart { background: rgba(255, 50, 50, 0.2); border-color: rgba(255, 50, 50, 0.5); color: #ff6666; }
+  .top-btn.restart:hover { background: rgba(255, 50, 50, 0.4); box-shadow: 0 0 10px rgba(255, 50, 50, 0.4); }
+  .top-btn.gears { background: rgba(255, 170, 0, 0.2); border-color: rgba(255, 170, 0, 0.6); color: #ffaa00; }
+  .top-btn.gears:active, .top-btn.gears.active { background: rgba(255, 170, 0, 0.4); box-shadow: 0 0 15px rgba(255, 170, 0, 0.5); }
+  .top-btn.flaps { background: rgba(100, 180, 255, 0.2); border-color: rgba(100, 180, 255, 0.6); color: #64b4ff; min-width: 130px; text-align: center; }
+  .top-btn.flaps:active, .top-btn.flaps.active { background: rgba(100, 180, 255, 0.4); box-shadow: 0 0 15px rgba(100, 180, 255, 0.5); }
+  .view-indicator { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); padding: 6px 14px; background: rgba(0, 20, 10, 0.5); border: 1px solid rgba(0, 255, 136, 0.4); border-radius: 4px; color: #00ff88; font-size: 11px; letter-spacing: 2px; pointer-events: none; transition: opacity 0.3s; opacity: 0; }
+  .view-indicator.show { opacity: 1; }
+  .gpws-warning { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); font-size: 48px; font-weight: bold; color: #ffaa00; text-shadow: 0 0 20px rgba(255, 170, 0, 0.8); letter-spacing: 4px; animation: blink 0.5s infinite; display: none; z-index: 15; }
+  .gpws-warning.active { display: block; }
+  
+  /* UI ДЛЯ ЗАХВАТА ЦЕЛИ */
+  #lockOnReticle {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 120px; height: 120px;
+    border: 2px solid rgba(0, 255, 136, 0.3);
+    border-radius: 50%;
+    pointer-events: none;
+    display: none;
+    z-index: 20;
+    transition: all 0.1s;
+  }
+  #lockOnReticle.locked {
+    border-color: rgba(255, 50, 50, 0.9);
+    box-shadow: 0 0 15px rgba(255, 50, 50, 0.5);
+    background: rgba(255, 0, 0, 0.1);
+  }
+  #lockOnReticle::before {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    width: 4px; height: 4px; background: currentColor;
+    transform: translate(-50%, -50%); border-radius: 50%;
+  }
+  #lockOnReticle span {
+    position: absolute; bottom: -25px; left: 50%; transform: translateX(-50%);
+    font-size: 12px; color: inherit; white-space: nowrap;
+  }
+
+  /* ИНДИКАТОР ВРАГА (СТРЕЛКА) - ИЗМЕНЕННЫЙ ДИЗАЙН */
+  #enemyIndicator {
+    position: absolute;
+    width: 0; 
+    height: 0; 
+    /* Создаем длинную иглу */
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-bottom: 60px solid rgba(255, 50, 50, 0.9);
+    transform-origin: 50% 100%; /* Вращение от основания */
+    pointer-events: none;
+    display: none;
+    z-index: 15;
+    filter: drop-shadow(0 0 8px red);
+  }
+
+  /* ЭКРАН ПАУЗЫ */
+  #pauseScreen {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); z-index: 5000;
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    backdrop-filter: blur(5px);
+  }
+  #pauseScreen h1 {
+    font-size: 60px; color: #00ff88; letter-spacing: 10px; margin-bottom: 30px;
+    text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+  }
+  #resumeBtn {
+    padding: 15px 50px; background: rgba(0, 255, 136, 0.1); border: 2px solid #00ff88;
+    color: #00ff88; font-size: 24px; font-family: 'Courier New'; cursor: pointer;
+    transition: all 0.2s;
+  }
+  #resumeBtn:hover { background: rgba(0, 255, 136, 0.3); box-shadow: 0 0 20px rgba(0, 255, 136, 0.4); }
+
+  @media (max-width: 900px), (pointer: coarse) {
+    .hud-horizon { top: 10px; left: 10px; width: 110px; height: 110px; }
+    .hud-left { top: 10px; left: 130px; padding: 6px 10px; min-width: 110px; }
+    .hud-right { top: 10px; right: 10px; padding: 6px 10px; min-width: 110px; }
+    .hud-label { font-size: 9px; letter-spacing: 1.5px; }
+    .hud-value { font-size: 18px; }
+    .hud-unit { font-size: 10px; }
+    .hud-row { margin-bottom: 6px; }
+    .hud-bottom { display: none; }
+    .left-controls { display: flex; }
+    .right-controls { display: flex; }
+    .top-btn { display: block; }
+    .warning { font-size: 24px; letter-spacing: 3px; }
+    .crosshair { width: 24px; height: 24px; }
+  }
+  @media (max-height: 500px) and (orientation: landscape) {
+    .hud-horizon { width: 90px; height: 90px; top: 8px; left: 8px; }
+    .hud-left, .hud-right { top: 8px; padding: 5px 8px; min-width: 95px; }
+    .hud-left { left: 105px; }
+    .hud-label { font-size: 8px; }
+    .hud-value { font-size: 16px; }
+    .hud-row { margin-bottom: 4px; }
+    .joystick { width: 110px; height: 110px; }
+    .joystick-knob { width: 48px; height: 48px; }
+    .throttle-track { height: 120px; width: 40px; }
+    .throttle-handle { width: 50px; height: 28px; }
+    .yaw-btn { width: 46px; height: 46px; font-size: 20px; }
+    .action-btn { width: 52px; height: 52px; font-size: 9px; }
+    .top-btn { font-size: 9px; padding: 4px 8px; }
+  }
+  .rotate-hint { position: fixed; inset: 0; background: rgba(0, 10, 5, 0.95); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; color: #00ff88; text-align: center; padding: 40px; }
+  .rotate-hint .icon { font-size: 80px; margin-bottom: 20px; animation: rotateAnim 2s ease-in-out infinite; }
+  .rotate-hint .text { font-size: 18px; letter-spacing: 3px; line-height: 1.8; }
+  @keyframes rotateAnim { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(90deg); } }
+  @media (orientation: portrait) and (max-width: 900px), (orientation: portrait) and (pointer: coarse) { .rotate-hint { display: flex; } }
+  #loading { position: fixed; inset: 0; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; color: #00ff88; font-size: 16px; letter-spacing: 4px; transition: opacity 0.5s; }
+  #loading.hidden { opacity: 0; pointer-events: none; }
+  .loader { width: 60px; height: 60px; border: 2px solid rgba(0, 255, 136, 0.2); border-top-color: #00ff88; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #crashScreen { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); z-index: 2000; display: none; flex-direction: column; align-items: center; justify-content: center; color: #ff3333; font-family: 'Courier New', monospace; pointer-events: auto; }
+  #crashScreen h1 { font-size: 48px; font-weight: bold; letter-spacing: 6px; text-shadow: 0 0 30px rgba(255, 50, 50, 0.8); margin-bottom: 15px; }
+  #crashScreen p { font-size: 16px; color: #fff; margin-bottom: 40px; opacity: 0.7; letter-spacing: 1px; }
+  #restartBtn { padding: 15px 40px; background: rgba(255, 50, 50, 0.15); border: 2px solid #ff3333; color: #ff3333; font-family: 'Courier New', monospace; font-size: 18px; font-weight: bold; letter-spacing: 3px; cursor: pointer; border-radius: 4px; transition: all 0.2s; text-shadow: 0 0 10px rgba(255, 50, 50, 0.5); }
+  #restartBtn:hover { background: rgba(255, 50, 50, 0.3); box-shadow: 0 0 25px rgba(255, 50, 50, 0.4); transform: scale(1.05); }
+  
+  /* Кнопка включения звука */
+  #soundOverlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 3000;
+    display: flex; align-items: center; justify-content: center; flex-direction: column;
+    color: #00ff88; font-family: 'Courier New'; cursor: pointer;
+  }
+  #soundOverlay h2 { font-size: 24px; margin-bottom: 20px; text-shadow: 0 0 10px #00ff88; }
+  #soundOverlay p { font-size: 14px; opacity: 0.8; }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="loader"></div>
+  <div>ЗАГРУЗКА СИМУЛЯТОРА</div>
+</div>
+
+<div id="soundOverlay">
+  <h2>НАЖМИТЕ ДЛЯ СТАРТА</h2>
+  <p>(Требуется для включения звука двигателя)</p>
+</div>
+
+<div id="crashScreen">
+  <h1>КАТАСТРОФА</h1>
+  <p>Самолет разрушен при столкновении с поверхностью</p>
+  <button id="restartBtn">ПЕРЕЗАПУСК</button>
+</div>
+
+<!-- ЭКРАН ПАУЗЫ -->
+<div id="pauseScreen">
+  <h1>ПАУЗА</h1>
+  <button id="resumeBtn">RESUME</button>
+</div>
+
+<div class="rotate-hint">
+  <div class="icon">📱</div>
+  <div class="text">ПОВЕРНИТЕ УСТРОЙСТВО<br>ГОРИЗОНТАЛЬНО</div>
+</div>
+
+<div id="canvas-container"></div>
+
+<div id="hud">
+  <div class="hud-panel hud-horizon" id="artificialHorizon">
+    <div class="horizon-inner" id="horizonInner"></div>
+    <div class="horizon-aircraft"><div class="h-wing-l"></div><div class="h-wing-r"></div><div class="h-center"></div></div>
+  </div>
+
+  <div class="hud-panel hud-left">
+    <div class="hud-row"><div class="hud-label">СКОРОСТЬ</div><div class="hud-value"><span id="speed">0</span><span class="hud-unit">КМ/Ч</span></div></div>
+    <div class="hud-row"><div class="hud-label">ВЫСОТА</div><div class="hud-value"><span id="altitude">0</span><span class="hud-unit">М</span></div></div>
+    <div class="hud-row"><div class="hud-label">ВЕРТ.С</div><div class="hud-value"><span id="vspeed">0</span><span class="hud-unit">М/С</span></div></div>
+    <div class="hud-row">
+      <div class="hud-label">УГОЛ АТАКИ</div>
+      <div class="hud-value"><span id="aoa">0</span><span class="hud-unit">°</span></div>
+      <div class="aoa-bar"><div class="aoa-fill" id="aoaBar" style="width:0%"></div><div class="aoa-marker"></div></div>
+    </div>
+  </div>
+
+  <div class="hud-panel hud-right">
+    <div class="hud-row"><div class="hud-label">КУРС</div><div class="hud-value"><span id="heading">0</span><span class="hud-unit">°</span></div></div>
+    <div class="hud-row"><div class="hud-label">КРЕН</div><div class="hud-value"><span id="roll">0</span><span class="hud-unit">°</span></div></div>
+    <div class="hud-row">
+      <div class="hud-label">ТЯГА</div>
+      <div class="hud-value"><span id="throttle">0</span><span class="hud-unit">%</span></div>
+      <div class="throttle-bar"><div class="throttle-fill" id="throttleBar" style="width:0%"></div></div>
+    </div>
+    <div class="hud-row"><div class="hud-label">ВЕТЕР</div><div class="hud-value"><span id="wind">0</span><span class="hud-unit">М/С</span></div></div>
+  </div>
+
+  <div class="crosshair"></div>
+  <!-- UI ЗАХВАТА ЦЕЛИ -->
+  <div id="lockOnReticle"><span>LOCK ON</span></div>
+  <!-- ИНДИКАТОР ВРАГА -->
+  <div id="enemyIndicator"></div>
+
+  <div class="warning" id="stallWarning">СВАЛИВАНИЕ</div>
+  <div class="warning" id="groundWarning" style="top:55%; color:#ffaa00; text-shadow:0 0 20px rgba(255,170,0,0.8);">МАЛАЯ ВЫСОТА</div>
+  <div class="gpws-warning" id="gpwsWarning">80</div>
+  <div class="view-indicator" id="viewIndicator">ВИД ИЗ КАБИНЫ</div>
+
+  <div class="hud-panel hud-bottom">
+    W/S — тангаж | A/D — крен | Q/E — рыскание | SHIFT/CTRL — тяга | SPACE — тормоз | F — закрылки | C — вид | G — шасси
+  </div>
+
+  <div class="left-controls">
+    <div class="joystick" id="joystickLeft">
+      <div class="joystick-label">ТАНГАЖ / КРЕН</div>
+      <div class="joystick-knob" id="knobLeft"></div>
+    </div>
+    <button class="action-btn level" id="levelBtn">РОВНОСТЬ</button>
+  </div>
+
+  <div class="right-controls">
+    <div class="action-buttons-right">
+      <button class="action-btn view" id="viewBtn">ВИД</button>
+      <button class="action-btn brake" id="brakeBtn">ТОРМОЗ</button>
+      <!-- КНОПКА FIRE -->
+      <div style="display:flex; flex-direction:column; align-items:center;">
+          <button class="action-btn fire" id="fireBtn">FIRE</button>
+          <div class="ammo-counter" id="ammoCounter">4/4</div>
+      </div>
+    </div>
+    <div class="yaw-buttons">
+      <button class="yaw-btn" id="yawLeftBtn">◄</button>
+      <button class="yaw-btn" id="yawRightBtn">►</button>
+    </div>
+    <div class="throttle-container">
+      <div class="throttle-label">ТЯГА</div>
+      <div class="throttle-track" id="throttleTrack"><div class="throttle-handle" id="throttleHandle"></div></div>
+      <div class="throttle-value" id="throttleValue">0%</div>
+    </div>
+  </div>
+
+  <div class="top-center-controls">
+    <button class="top-btn" id="fullscreenBtn">⛶ FULLSCREEN</button>
+    <button class="top-btn restart" id="restartBtnTop">↻ РЕСТАРТ</button>
+    <button class="top-btn" id="pauseBtn">II ПАУЗА</button>
+    <button class="top-btn gears" id="gearsBtn">GEARS: УБРАНО</button>
+    <button class="top-btn flaps" id="flapsBtn">FLAPS: UP (0°)</button>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+const isMobile = (() => {
+  const ua = navigator.userAgent;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
+    || (navigator.maxTouchPoints && navigator.maxTouchPoints > 1)
+    || window.matchMedia('(pointer: coarse)').matches;
+})();
+
+class PerlinNoise {
+  constructor(seed = 42) { this.grad3 = [[1,1,0], [-1,1,0], [1,-1,0], [-1,-1,0], [1,0,1], [-1,0,1], [1,0,-1], [-1,0,-1], [0,1,1], [0,-1,1], [0,1,-1], [0,-1,-1]]; this.perm = new Array(512); this.gradP = new Array(512); this.seed(seed); }
+  seed(seed) { const p = new Array(256); if (seed > 0 && seed < 1) seed *= 65536; seed = Math.floor(seed); if (seed < 256) seed |= seed << 8; for (let i = 0; i < 256; i++) { let v; if (i & 1) v = p[i] = (i ^ (seed & 255)); else v = p[i] = (i ^ ((seed >> 8) & 255)); v = ((v >> 1) ^ v) & 255; this.perm[i] = this.perm[i + 256] = v; this.gradP[i] = this.gradP[i + 256] = this.grad3[v % 12]; } }
+  fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+  lerp(a, b, t) { return (1 - t) * a + t * b; }
+  noise2D(x, y) { let X = Math.floor(x), Y = Math.floor(y); x -= X; y -= Y; X &= 255; Y &= 255; const n00 = this.gradP[X + this.perm[Y]]; const n01 = this.gradP[X + this.perm[Y + 1]]; const n10 = this.gradP[X + 1 + this.perm[Y]]; const n11 = this.gradP[X + 1 + this.perm[Y + 1]]; const d00 = n00[0] * x + n00[1] * y; const d01 = n01[0] * x + n01[1] * (y - 1); const d10 = n10[0] * (x - 1) + n10[1] * y; const d11 = n11[0] * (x - 1) + n11[1] * (y - 1); const u = this.fade(x); return this.lerp(this.lerp(d00, d10, u), this.lerp(d01, d11, u), this.fade(y)); }
+  fbm(x, y, octaves = 5, persistence = 0.5, lacunarity = 2.0) { let total = 0, frequency = 1, amplitude = 1, maxVal = 0; for (let i = 0; i < octaves; i++) { total += this.noise2D(x * frequency, y * frequency) * amplitude; maxVal += amplitude; amplitude *= persistence; frequency *= lacunarity; } return total / maxVal; }
+}
+const perlin = new PerlinNoise(12345);
+
+const WORLD = { terrainSize: 2000, terrainSegments: isMobile ? 140 : 200, maxHeight: 250, noiseScale: 0.003, chunkThreshold: 500, treeCount: isMobile ? 400 : 800, buildingCount: isMobile ? 15 : 30, birdCount: isMobile ? 8 : 15, };
+
+// === ИЗМЕНЕНО: Уменьшена чувствительность управления для реализма ===
+const PHYSICS = {
+  gravity: 9.81, airDensity: 1.225, wingArea: 16, mass: 800, liftCoeffSlope: 5.5, maxLiftCoeff: 1.5,
+  stallAngle: 15 * Math.PI/180, dragCoeffBase: 0.025, dragCoeffInduced: 0.05, maxThrust: 25000, stallSpeed: 25,
+  pitchRate: 0.75, // Было 1.5
+  rollRate: 1.1,   // Было 2.2
+  yawRate: 0.45,   // Было 0.9
+  inertiaPitch: 800, inertiaRoll: 400, inertiaYaw: 1200,
+  dampingPitch: 3.0, dampingRoll: 2.5, dampingYaw: 4.0, pFactor: 0.15,
+};
+
+const CONTROL_CONFIG = { minAuthority: 0.15, maxAuthority: 1.0, referenceSpeed: 70, curvePower: 2.0, };
+const FLAP_CONFIG = { angles: [0, 20, 30, 40], moveSpeed: 1.8, liftMultiplier: 3.0, dragMultiplier: 2.0, pitchMoment: 0.5, stallAngleBonus: 0.35, };
+const GEAR_CONFIG = { deploySpeed: 3.0, };
+const GPWS_ALTITUDES = [80, 70, 60, 50, 40, 30, 20, 10, 5, 4, 3, 2, 1];
+
+const state = {
+  throttle: 0.0, input: { pitch: 0, roll: 0, yaw: 0, brake: false }, keys: {}, time: 0, cameraMode: 'chase',
+  wind: new THREE.Vector3(2, 0, 1), isCrashed: false, crashParticles: null, isLeveling: false,
+  gearsDeployed: true, gearsAnimation: 1.0, gpwsTriggered: new Set(),
+  flapStage: 0, flapAngle: 0, targetFlapAngle: 0, flapDirection: 1, flapMoving: false,
+  audioEnabled: false, isPaused: false,
+};
+
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x87a8c8, 400, 2000);
+scene.background = new THREE.Color(0x87a8c8);
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.3, 5000);
+const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, powerPreference: 'high-performance' });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
+renderer.shadowMap.enabled = !isMobile;
+if (renderer.shadowMap.enabled) renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+container.appendChild(renderer.domElement);
+
+const hemiLight = new THREE.HemisphereLight(0xbfd8ff, 0x556633, 0.7); scene.add(hemiLight);
+const sunLight = new THREE.DirectionalLight(0xfff2d6, 1.5);
+sunLight.position.set(500, 800, 300);
+if (renderer.shadowMap.enabled) {
+  sunLight.castShadow = true; sunLight.shadow.mapSize.set(isMobile ? 1024 : 2048, isMobile ? 1024 : 2048);
+  sunLight.shadow.camera.near = 10; sunLight.shadow.camera.far = 2000;
+  const s = 350; sunLight.shadow.camera.left = -s; sunLight.shadow.camera.right = s;
+  sunLight.shadow.camera.top = s; sunLight.shadow.camera.bottom = -s; sunLight.shadow.bias = -0.0005;
+}
+scene.add(sunLight); scene.add(sunLight.target);
+
+const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(80, 16, 16), new THREE.MeshBasicMaterial({ color: 0xfff4d6 })); scene.add(sunMesh);
+const sunGlow = new THREE.Mesh(new THREE.SphereGeometry(140, 16, 16), new THREE.MeshBasicMaterial({ color: 0xffdd88, transparent: true, opacity: 0.25, depthWrite: false })); scene.add(sunGlow);
+
+const skyGeo = new THREE.SphereGeometry(3500, 32, 16);
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide, uniforms: { topColor: { value: new THREE.Color(0x2a5ea0) }, horizonColor: { value: new THREE.Color(0xd8e4f0) }, bottomColor: { value: new THREE.Color(0x9ab4cc) }, sunDirection: { value: new THREE.Vector3(0.5, 0.6, 0.3).normalize() }, sunColor: { value: new THREE.Color(0xfff4d6) } },
+  vertexShader: `varying vec3 vWorldPosition; void main() { vec4 worldPosition = modelMatrix * vec4(position, 1.0); vWorldPosition = worldPosition.xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `uniform vec3 topColor; uniform vec3 horizonColor; uniform vec3 bottomColor; uniform vec3 sunDirection; uniform vec3 sunColor; varying vec3 vWorldPosition; void main() { vec3 dir = normalize(vWorldPosition); float h = dir.y; vec3 sky = mix(horizonColor, topColor, pow(max(h, 0.0), 0.5)); sky = mix(bottomColor, sky, smoothstep(-0.2, 0.0, h)); float sunDot = max(dot(dir, sunDirection), 0.0); sky += sunColor * pow(sunDot, 32.0) * 0.8; sky += sunColor * pow(sunDot, 4.0) * 0.15; gl_FragColor = vec4(sky, 1.0); }`
+});
+scene.add(new THREE.Mesh(skyGeo, skyMat));
+
+function makeCloudTexture() {
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256; const ctx = canvas.getContext('2d');
+  const blobs = [{ x: 128, y: 128, r: 95 }, { x: 75, y: 140, r: 65 }, { x: 185, y: 130, r: 75 }, { x: 110, y: 85, r: 58 }, { x: 150, y: 165, r: 68 }, { x: 90, y: 110, r: 50 }];
+  for (const b of blobs) {
+    const grad = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 0.85)'); grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.4)'); grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(canvas); tex.needsUpdate = true; return tex;
+}
+const cloudTex = makeCloudTexture(); const clouds = [];
+for (let i = 0; i < (isMobile ? 20 : 35); i++) {
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloudTex, transparent: true, opacity: 0.75 + Math.random() * 0.2, depthWrite: false }));
+  const scale = 180 + Math.random() * 280; sprite.scale.set(scale, scale * 0.5, 1);
+  sprite.position.set((Math.random() - 0.5) * 3500, 220 + Math.random() * 250, (Math.random() - 0.5) * 3500);
+  sprite.userData.speed = 0.5 + Math.random() * 1.5; scene.add(sprite); clouds.push(sprite);
+}
+
+const terrainGeo = new THREE.PlaneGeometry(WORLD.terrainSize, WORLD.terrainSize, WORLD.terrainSegments, WORLD.terrainSegments);
+terrainGeo.rotateX(-Math.PI / 2);
+const vertCount = terrainGeo.attributes.position.count;
+const colors = new Float32Array(vertCount * 3);
+terrainGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+const terrainMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: false, roughness: 0.95, metalness: 0.0 });
+const terrain = new THREE.Mesh(terrainGeo, terrainMat);
+terrain.receiveShadow = renderer.shadowMap.enabled; scene.add(terrain);
+let terrainOffset = new THREE.Vector2(0, 0);
+
+function getTerrainHeight(worldX, worldZ) {
+  // === ИЗМЕНЕНО: ВПП всегда плоская (высота 0) ===
+  if (Math.abs(worldX) < 70 && Math.abs(worldZ) < 1100) return 0;
+
+  const n1 = perlin.fbm(worldX * WORLD.noiseScale, worldZ * WORLD.noiseScale, 5, 0.5, 2.0);
+  const n2 = perlin.fbm(worldX * WORLD.noiseScale * 3, worldZ * WORLD.noiseScale * 3, 3, 0.5, 2.0) * 0.3;
+  return (n1 + n2) * WORLD.maxHeight;
+}
+
+function updateTerrain(centerX, centerZ) {
+  const positions = terrainGeo.attributes.position.array; const segs = WORLD.terrainSegments;
+  for (let i = 0; i <= segs; i++) {
+    for (let j = 0; j <= segs; j++) {
+      const idx = (i * (segs + 1) + j); const idx3 = idx * 3;
+      const lx = positions[idx3], lz = positions[idx3 + 2];
+      const wx = centerX + lx, wz = centerZ + lz;
+      const h = getTerrainHeight(wx, wz); positions[idx3 + 1] = h;
+      let r, g, b;
+      if (h < -15) { r = 0.15; g = 0.3; b = 0.45; }
+      else if (h < 5) { const t = (h + 15) / 20; r = 0.55 - t * 0.2; g = 0.5 - t * 0.05; b = 0.3 - t * 0.1; }
+      else if (h < 40) { const t = (h - 5) / 35; r = 0.25 + t * 0.08; g = 0.48 + t * 0.05; b = 0.18; }
+      else if (h < 120) { const t = (h - 40) / 80; r = 0.42 + t * 0.1; g = 0.36 - t * 0.05; b = 0.22 - t * 0.05; }
+      else { const t = Math.min(1, (h - 120) / 80); r = 0.55 + t * 0.4; g = 0.55 + t * 0.4; b = 0.6 + t * 0.35; }
+      colors[idx3] = r; colors[idx3 + 1] = g; colors[idx3 + 2] = b;
+    }
+  }
+  terrainGeo.attributes.position.needsUpdate = true; terrainGeo.attributes.color.needsUpdate = true;
+  terrainGeo.computeVertexNormals(); terrain.position.set(centerX, 0, centerZ); terrainOffset.set(centerX, centerZ);
+}
+
+const water = new THREE.Mesh(new THREE.PlaneGeometry(WORLD.terrainSize * 2, WORLD.terrainSize * 2).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x2a5a8a, transparent: true, opacity: 0.75, roughness: 0.15, metalness: 0.6 }));
+water.position.y = -12; water.receiveShadow = renderer.shadowMap.enabled; scene.add(water);
+
+const treeTrunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.4, 0.6, 4, 6), new THREE.MeshStandardMaterial({ color: 0x5a3a1a, roughness: 0.9 }), WORLD.treeCount);
+const treeTop = new THREE.InstancedMesh(new THREE.ConeGeometry(2.5, 6, 6), new THREE.MeshStandardMaterial({ color: 0x2a5a2a, roughness: 0.8 }), WORLD.treeCount);
+treeTrunk.castShadow = renderer.shadowMap.enabled; treeTop.castShadow = renderer.shadowMap.enabled;
+const treeData = [];
+{
+  let seed = 12345; const rand = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }; const dummy = new THREE.Object3D();
+  let placed = 0, attempts = 0;
+  while (placed < WORLD.treeCount && attempts < WORLD.treeCount * 5) {
+    attempts++; const x = (rand() - 0.5) * WORLD.terrainSize * 0.9; const z = (rand() - 0.5) * WORLD.terrainSize * 0.9; const h = getTerrainHeight(x, z);
+    // ИСПРАВЛЕНИЕ БАГА 2: Расширенная проверка зоны ВПП для деревьев
+    // Исключаем не только саму полосу, но и зону вокруг нее
+    if (h > 5 && h < 100 && !(Math.abs(x) < 80 && Math.abs(z) < 1100)) {
+      const scale = 0.8 + rand() * 1.2, rot = rand() * Math.PI * 2; treeData.push({ x, z, h, scale, rot });
+      dummy.position.set(x, h + 2 * scale, z); dummy.scale.set(scale, scale, scale); dummy.rotation.set(0, rot, 0); dummy.updateMatrix(); treeTrunk.setMatrixAt(placed, dummy.matrix);
+      dummy.position.set(x, h + 5 * scale, z); dummy.updateMatrix(); treeTop.setMatrixAt(placed, dummy.matrix); placed++;
+    }
+  }
+  treeTrunk.count = treeData.length; treeTop.count = treeData.length; treeTrunk.instanceMatrix.needsUpdate = true; treeTop.instanceMatrix.needsUpdate = true;
+}
+scene.add(treeTrunk); scene.add(treeTop);
+
+const buildings = []; const buildingMat = new THREE.MeshStandardMaterial({ color: 0xc8b896, roughness: 0.8 }); const roofMat = new THREE.MeshStandardMaterial({ color: 0x8a3a2a, roughness: 0.7 });
+function createBuilding(x, z) {
+  const h = getTerrainHeight(x, z); 
+  // ИСПРАВЛЕНИЕ БАГА 2: Расширенная проверка зоны ВПП для зданий
+  if (h < 5 || h > 80 || (Math.abs(x) < 80 && Math.abs(z) < 1100)) return null;
+  const group = new THREE.Group(); const w = 4 + Math.random() * 4, d = 4 + Math.random() * 4, bh = 3 + Math.random() * 3;
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w, bh, d), buildingMat); body.position.y = bh / 2; body.castShadow = renderer.shadowMap.enabled; body.receiveShadow = renderer.shadowMap.enabled; group.add(body);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.75, 2.5, 4), roofMat); roof.position.y = bh + 1.25; roof.rotation.y = Math.PI / 4; roof.castShadow = renderer.shadowMap.enabled; group.add(roof);
+  group.position.set(x, h, z); group.rotation.y = Math.random() * Math.PI * 2; return group;
+}
+{
+  let seed = 54321; const rand = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+  for (let c = 0; c < 5; c++) {
+    const cx = (rand() - 0.5) * WORLD.terrainSize * 0.7, cz = (rand() - 0.5) * WORLD.terrainSize * 0.7; const count = 3 + Math.floor(rand() * 5);
+    for (let i = 0; i < count && buildings.length < WORLD.buildingCount; i++) { const b = createBuilding(cx + (rand() - 0.5) * 40, cz + (rand() - 0.5) * 40); if (b) { scene.add(b); buildings.push(b); } }
+  }
+}
+
+// === УДАЛЕНО: Функция createHangar и создание объекта hangar ===
+
+function makeBirdTexture() {
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 64; const ctx = canvas.getContext('2d');
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(8, 32); ctx.quadraticCurveTo(20, 20, 32, 32); ctx.quadraticCurveTo(44, 20, 56, 32); ctx.stroke();
+  const tex = new THREE.CanvasTexture(canvas); tex.needsUpdate = true; return tex;
+}
+const birds = [];
+for (let i = 0; i < WORLD.birdCount; i++) {
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeBirdTexture(), transparent: true, depthWrite: false }));
+  const scale = 2 + Math.random() * 2; sprite.scale.set(scale * 2, scale, 1);
+  const cx = (Math.random() - 0.5) * 1500, cz = (Math.random() - 0.5) * 1500; const h = Math.max(50, getTerrainHeight(cx, cz) + 30 + Math.random() * 80);
+  sprite.position.set(cx, h, cz); sprite.userData = { centerX: cx, centerZ: cz, radius: 30 + Math.random() * 50, speed: 0.3 + Math.random() * 0.5, phase: Math.random() * Math.PI * 2, baseHeight: h };
+  scene.add(sprite); birds.push(sprite);
+}
+
+function createRunwayTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512; canvas.height = 2048;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#2a2a2a'; ctx.fillRect(0, 0, 512, 2048);
+  for (let i = 0; i < 15000; i++) { ctx.fillStyle = Math.random() > 0.5 ? '#333333' : '#222222'; ctx.fillRect(Math.random() * 512, Math.random() * 2048, 2, 2); }
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 8;
+  ctx.beginPath(); ctx.moveTo(20, 20); ctx.lineTo(20, 2028); ctx.moveTo(492, 20); ctx.lineTo(492, 2028); ctx.stroke();
+  ctx.lineWidth = 6; ctx.setLineDash([80, 60]); ctx.beginPath(); ctx.moveTo(256, 150); ctx.lineTo(256, 1898); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = '#ffffff';
+  const keyW = 20, keyH = 60, startX = 100, gap = 24;
+  for(let i=0; i<8; i++) ctx.fillRect(startX + i*(keyW+gap), 30, keyW, keyH);
+  for(let i=0; i<8; i++) ctx.fillRect(startX + i*(keyW+gap), 2048 - 30 - keyH, keyW, keyH);
+  ctx.font = 'bold 80px Arial'; ctx.textAlign = 'center'; ctx.fillText('18', 256, 160);
+  ctx.save(); ctx.translate(256, 2048 - 120); ctx.rotate(Math.PI); ctx.fillText('36', 0, 0); ctx.restore();
+  ctx.fillRect(180, 350, 40, 120); ctx.fillRect(292, 350, 40, 120);
+  ctx.fillRect(180, 2048 - 350 - 120, 40, 120); ctx.fillRect(292, 2048 - 350 - 120, 40, 120);
+  for(let i=0; i<3; i++) {
+    let yTop = 550 + i * 120; let yBottom = 2048 - 550 - 120 - i * 120;
+    ctx.fillRect(160, yTop, 30, 60); ctx.fillRect(322, yTop, 30, 60);
+    ctx.fillRect(160, yBottom, 30, 60); ctx.fillRect(322, yBottom, 30, 60);
+  }
+  const tex = new THREE.CanvasTexture(canvas); tex.anisotropy = renderer.capabilities.getMaxAnisotropy(); return tex;
+}
+
+const runwayWidth = 120; const runwayLength = 2000;
+const runwayGeo = new THREE.PlaneGeometry(runwayWidth, runwayLength); runwayGeo.rotateX(-Math.PI / 2);
+// === ИЗМЕНЕНО: ВПП непрозрачная ===
+const runwayMat = new THREE.MeshStandardMaterial({ map: createRunwayTexture(), roughness: 0.9, metalness: 0.1, transparent: false, opacity: 1.0 });
+const runway = new THREE.Mesh(runwayGeo, runwayMat);
+runway.position.set(0, getTerrainHeight(0, 0) + 0.2, 0); runway.receiveShadow = true; scene.add(runway);
+
+const airplane = new THREE.Group();
+const bodyMat = new THREE.MeshStandardMaterial({ color: 0xd8d8dc, roughness: 0.4, metalness: 0.6 });
+const wingMat = new THREE.MeshStandardMaterial({ color: 0xb8b8bc, roughness: 0.5, metalness: 0.4 });
+const accentMat = new THREE.MeshStandardMaterial({ color: 0xcc2222, roughness: 0.4, metalness: 0.3 });
+const cockpitMat = new THREE.MeshStandardMaterial({ color: 0x1a2a4a, roughness: 0.1, metalness: 0.9, transparent: true, opacity: 0.8 });
+const propMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 });
+
+const fuselage = new THREE.Mesh(new THREE.CapsuleGeometry(0.9, 5, 8, 16).rotateX(Math.PI / 2), bodyMat); fuselage.castShadow = renderer.shadowMap.enabled; airplane.add(fuselage);
+const nose = new THREE.Mesh(new THREE.ConeGeometry(0.9, 1.2, 16).rotateX(-Math.PI / 2), accentMat); nose.position.z = -3.5; nose.castShadow = renderer.shadowMap.enabled; airplane.add(nose);
+const cockpitMesh = new THREE.Mesh(new THREE.SphereGeometry(0.85, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.7, 1.4), cockpitMat); cockpitMesh.position.set(0, 0.6, -0.5); airplane.add(cockpitMesh);
+const wings = new THREE.Mesh(new THREE.BoxGeometry(12, 0.15, 1.8), wingMat); wings.position.set(0, -0.1, 0.3); wings.castShadow = renderer.shadowMap.enabled; airplane.add(wings);
+const tipL = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.15, 1.8), accentMat); tipL.position.set(-6.2, -0.1, 0.3); airplane.add(tipL);
+const tipR = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.15, 1.8), accentMat); tipR.position.set(6.2, -0.1, 0.3); airplane.add(tipR);
+const vStab = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.8, 1.5), wingMat); vStab.position.set(0, 1.0, 3.0); vStab.castShadow = renderer.shadowMap.enabled; airplane.add(vStab);
+const vStripe = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.4, 1.5), accentMat); vStripe.position.set(0, 1.7, 3.0); airplane.add(vStripe);
+const hStab = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.12, 1.2), wingMat); hStab.position.set(0, 0.1, 3.0); hStab.castShadow = renderer.shadowMap.enabled; airplane.add(hStab);
+const propGroup = new THREE.Group();
+propGroup.add(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.3, 12).rotateX(Math.PI / 2), propMat));
+const blade1 = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.08, 0.2), propMat);
+const blade2 = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.08, 0.2), propMat); blade2.rotation.z = Math.PI / 2;
+propGroup.add(blade1); propGroup.add(blade2); propGroup.position.z = -4.1; airplane.add(propGroup);
+airplane.position.set(0, 180, 0); airplane.quaternion.setFromEuler(new THREE.Euler(0, Math.PI, 0)); scene.add(airplane);
+
+const landingGearGroup = new THREE.Group(); airplane.add(landingGearGroup);
+const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+const strutMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8, roughness: 0.3 });
+function createGear(x, z, isNose = false) {
+  const gear = new THREE.Group(); const strutLen = isNose ? 1.2 : 1.8;
+  const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, strutLen, 8), strutMat); strut.position.y = -strutLen / 2; gear.add(strut);
+  const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.15, 16).rotateZ(Math.PI / 2), wheelMat); wheel.position.y = -strutLen; gear.add(wheel);
+  gear.position.set(x, 0, z); gear.userData.stowedY = 0; gear.userData.deployedY = isNose ? -1.2 : -1.8; gear.userData.currentY = 0; gear.userData.baseRotX = isNose ? -Math.PI / 3 : -Math.PI / 4;
+  landingGearGroup.add(gear); return gear;
+}
+const gearLeft = createGear(-1.5, 1.0); const gearRight = createGear(1.5, 1.0); const gearNose = createGear(0, -2.5, true); const gears = [gearLeft, gearRight, gearNose];
+
+const flapMat = new THREE.MeshStandardMaterial({ color: 0x999999, roughness: 0.6, metalness: 0.4 });
+function createFlap(xSign) {
+  const flapGeo = new THREE.BoxGeometry(4.5, 0.12, 0.6); flapGeo.translate(0, 0, 0.3);
+  const flap = new THREE.Mesh(flapGeo, flapMat); flap.position.set(xSign * 3.2, -0.15, 1.2); flap.castShadow = renderer.shadowMap.enabled; return flap;
+}
+const flapLeft = createFlap(-1); const flapRight = createFlap(1); airplane.add(flapLeft); airplane.add(flapRight);
+
+const cockpitGroup = new THREE.Group(); cockpitGroup.visible = false;
+const dashMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1f, roughness: 0.7, metalness: 0.3 });
+const frameMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2f, roughness: 0.6, metalness: 0.4 });
+const dashboard = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.8, 0.3), dashMat); dashboard.position.set(0, -0.4, -1.2); dashboard.rotation.x = -0.3; cockpitGroup.add(dashboard);
+const topFrame = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.15, 0.15), frameMat); topFrame.position.set(0, 0.5, -1.4); cockpitGroup.add(topFrame);
+const sideFrameL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.2, 0.15), frameMat); sideFrameL.position.set(-1.3, -0.1, -1.4); cockpitGroup.add(sideFrameL);
+const sideFrameR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.2, 0.15), frameMat); sideFrameR.position.set(1.3, -0.1, -1.4); cockpitGroup.add(sideFrameR);
+const centerFrame = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.2, 0.15), frameMat); centerFrame.position.set(0, -0.1, -1.4); cockpitGroup.add(centerFrame);
+const bottomFrame = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.15, 0.3), frameMat); bottomFrame.position.set(0, -0.8, -1.2); cockpitGroup.add(bottomFrame);
+const yokeGroup = new THREE.Group();
+const yokeRing = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.03, 8, 24), new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.5 })); yokeRing.rotation.x = Math.PI / 2; yokeGroup.add(yokeRing);
+const yokeCol = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.4, 8), new THREE.MeshStandardMaterial({ color: 0x2a2a2a })); yokeCol.rotation.x = Math.PI / 2; yokeCol.position.z = 0.2; yokeGroup.add(yokeCol);
+yokeGroup.position.set(0, -0.35, -0.85); cockpitGroup.add(yokeGroup);
+
+function createHorizonTexture() {
+  const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, 512);
+  skyGrad.addColorStop(0, '#004488'); skyGrad.addColorStop(0.5, '#0077cc');
+  ctx.fillStyle = skyGrad; ctx.fillRect(0, 0, 512, 256);
+  const groundGrad = ctx.createLinearGradient(0, 256, 0, 512);
+  groundGrad.addColorStop(0, '#554433'); groundGrad.addColorStop(1, '#332211');
+  ctx.fillStyle = groundGrad; ctx.fillRect(0, 256, 512, 256);
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, 256); ctx.lineTo(512, 256); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'; ctx.lineWidth = 2; ctx.font = '16px Arial'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+  function drawLine(y, label, isMajor) {
+    const len = isMajor ? 60 : 30;
+    ctx.beginPath(); ctx.moveTo(256 - len/2, y); ctx.lineTo(256 + len/2, y); ctx.stroke();
+    if (label) {
+      ctx.fillText(label, 256 - len/2 - 15, y + 5);
+      ctx.fillText(label, 256 + len/2 + 15, y + 5);
+    }
+  }
+  for (let i = 1; i <= 4; i++) {
+    const offset = i * 25;
+    drawLine(256 - offset, i*10, true);
+    drawLine(256 + offset, i*10, true);
+  }
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(256, 256, 200, Math.PI + 0.5, 2*Math.PI - 0.5); ctx.stroke();
+  const angles = [-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60];
+  angles.forEach(deg => {
+    const rad = (deg - 90) * Math.PI / 180;
+    const x1 = 256 + 190 * Math.cos(rad);
+    const y1 = 256 + 190 * Math.sin(rad);
+    const x2 = 256 + 210 * Math.cos(rad);
+    const y2 = 256 + 210 * Math.sin(rad);
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  });
+  const tex = new THREE.CanvasTexture(canvas); tex.needsUpdate = true; return tex;
+}
+
+const horizonTexture = createHorizonTexture();
+const horizonInnerEl = document.getElementById('horizonInner');
+if (horizonInnerEl) {
+  horizonInnerEl.style.backgroundImage = `url(${horizonTexture.image.toDataURL()})`;
+}
+
+function makeInstrumentTexture(label, value, unit, color = '#00ff88') {
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 128; const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#0a0a0f'; ctx.fillRect(0, 0, 128, 128);
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.strokeRect(4, 4, 120, 120);
+  ctx.fillStyle = color; ctx.font = 'bold 14px Courier New'; ctx.textAlign = 'center'; ctx.fillText(label, 64, 25);
+  ctx.font = 'bold 32px Courier New'; ctx.fillText(value, 64, 75);
+  ctx.font = '12px Courier New'; ctx.fillText(unit, 64, 100);
+  const tex = new THREE.CanvasTexture(canvas); tex.needsUpdate = true; return { tex, canvas, ctx };
+}
+
+const instruments = [];
+const instrDefs = [
+  { label: 'SPD', x: -0.8, y: -0.35, key: 'speed', unit: 'KMH' },
+  { label: 'ALT', x: -0.4, y: -0.35, key: 'alt', unit: 'M' },
+  { label: 'HDG', x: 0.0, y: -0.35, key: 'hdg', unit: 'DEG' },
+  { label: 'THR', x: 0.4, y: -0.35, key: 'thr', unit: '%' },
+  { label: 'FLP', x: 0.8, y: -0.35, key: 'flaps', unit: 'DEG' }
+];
+for (const def of instrDefs) {
+  const { tex, canvas, ctx } = makeInstrumentTexture(def.label, '0', def.unit);
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.35), new THREE.MeshBasicMaterial({ map: tex }));
+  mesh.position.set(def.x, def.y, -1.03); mesh.rotation.x = -0.3;
+  cockpitGroup.add(mesh); instruments.push({ mesh, def, tex, canvas, ctx });
+}
+
+const gloveMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.8 });
+const gloveL = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), gloveMat); gloveL.position.set(-0.22, -0.35, -0.85); gloveL.scale.set(1, 0.7, 1.3); cockpitGroup.add(gloveL);
+const gloveR = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), gloveMat); gloveR.position.set(0.22, -0.35, -0.85); gloveR.scale.set(1, 0.7, 1.3); cockpitGroup.add(gloveR);
+cockpitGroup.position.set(0, 0.7, -0.3); airplane.add(cockpitGroup);
+
+const planeState = { velocity: new THREE.Vector3(0, 0, 0), angularVelocity: new THREE.Vector3(0, 0, 0), prevAltitude: 180, angleOfAttack: 0, stall: false, };
+const _forward = new THREE.Vector3(), _up = new THREE.Vector3(), _right = new THREE.Vector3();
+const _thrust = new THREE.Vector3(), _lift = new THREE.Vector3(), _drag = new THREE.Vector3(), _accel = new THREE.Vector3();
+
+function getControlAuthority(speed) {
+  const t = Math.min(1.0, speed / CONTROL_CONFIG.referenceSpeed);
+  return CONTROL_CONFIG.minAuthority + (CONTROL_CONFIG.maxAuthority - CONTROL_CONFIG.minAuthority) * Math.pow(t, CONTROL_CONFIG.curvePower);
+}
+
+function triggerCrash() {
+  if (state.isCrashed) return; state.isCrashed = true;
+  planeState.velocity.set(0, 0, 0); planeState.angularVelocity.set(0, 0, 0);
+  airplane.rotation.z = Math.PI / 4; airplane.rotation.x = -Math.PI / 6; propGroup.visible = false;
+  const particleCount = 200; const geom = new THREE.BufferGeometry();
+  const positions = new Float32Array(particleCount * 3); const velocities = []; const colors = new Float32Array(particleCount * 3);
+  for (let i = 0; i < particleCount; i++) {
+    positions[i * 3] = airplane.position.x; positions[i * 3 + 1] = airplane.position.y; positions[i * 3 + 2] = airplane.position.z;
+    velocities.push({ x: (Math.random() - 0.5) * 50, y: Math.random() * 40 + 10, z: (Math.random() - 0.5) * 50 });
+    colors[i * 3] = 1.0; colors[i * 3 + 1] = Math.random() * 0.6; colors[i * 3 + 2] = 0.0;
+  }
+  geom.setAttribute('position', new THREE.BufferAttribute(positions, 3)); geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.PointsMaterial({ size: 2.0, vertexColors: true, transparent: true, opacity: 1.0, blending: THREE.AdditiveBlending, depthWrite: false });
+  state.crashParticles = new THREE.Points(geom, mat); state.crashParticles.userData = { velocities: velocities, age: 0 };
+  scene.add(state.crashParticles); document.getElementById('crashScreen').style.display = 'flex';
+}
+
+// === ЗВУК ДВИГАТЕЛЯ ===
+let engineOsc = null;
+let engineGain = null;
+let audioCtx = null;
+
+function initEngineSound() {
+  if (audioCtx) return;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Основной тон (гул турбины)
+    engineOsc = audioCtx.createOscillator();
+    engineOsc.type = 'sawtooth';
+    engineOsc.frequency.value = 100;
+    
+    // Фильтр для смягчения звука
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 400;
+    
+    // Громкость
+    engineGain = audioCtx.createGain();
+    engineGain.gain.value = 0;
+    
+    engineOsc.connect(filter);
+    filter.connect(engineGain);
+    engineGain.connect(audioCtx.destination);
+    
+    engineOsc.start();
+    state.audioEnabled = true;
+    document.getElementById('soundOverlay').style.display = 'none';
+  } catch (e) {
+    console.error("Audio init failed", e);
+  }
+}
+
+function updateEngineSound(dt) {
+  if (!state.audioEnabled || !engineOsc || !engineGain) return;
+  
+  // Частота зависит от тяги (от 80Hz до 250Hz)
+  const targetFreq = 80 + (state.throttle * 170);
+  engineOsc.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.1);
+  
+  // Громкость зависит от тяги (минимальная громкость 0.05, чтобы было слышно холостой ход)
+  const targetVol = 0.05 + (state.throttle * 0.15);
+  engineGain.gain.setTargetAtTime(targetVol, audioCtx.currentTime, 0.1);
+}
+
+function updatePlanePhysics(dt) {
+  if (state.isCrashed) {
+    if (state.crashParticles) {
+      const positions = state.crashParticles.geometry.attributes.position.array; const vels = state.crashParticles.userData.velocities;
+      state.crashParticles.userData.age += dt;
+      for (let i = 0; i < vels.length; i++) { positions[i * 3] += vels[i].x * dt; positions[i * 3 + 1] += vels[i].y * dt; positions[i * 3 + 2] += vels[i].z * dt; vels[i].y -= 9.81 * dt; }
+      state.crashParticles.geometry.attributes.position.needsUpdate = true;
+      state.crashParticles.material.opacity = Math.max(0, 1.0 - state.crashParticles.userData.age * 0.25);
+      if (state.crashParticles.userData.age > 4.0) { scene.remove(state.crashParticles); state.crashParticles = null; }
+    }
+    return;
+  }
+
+  _forward.set(0, 0, -1).applyQuaternion(airplane.quaternion);
+  _up.set(0, 1, 0).applyQuaternion(airplane.quaternion);
+  _right.set(1, 0, 0).applyQuaternion(airplane.quaternion);
+  const speed = planeState.velocity.length();
+
+  if (speed > 1) {
+    const velDir = planeState.velocity.clone().normalize(); const dot = velDir.dot(_forward);
+    planeState.angleOfAttack = Math.acos(THREE.MathUtils.clamp(dot, -1, 1));
+    const cross = new THREE.Vector3().crossVectors(_forward, velDir);
+    if (cross.dot(_right) > 0) planeState.angleOfAttack = -planeState.angleOfAttack;
+  } else { planeState.angleOfAttack = 0; }
+
+  const absAoA = Math.abs(planeState.angleOfAttack);
+  const terrainH = getTerrainHeight(airplane.position.x, airplane.position.z);
+  const agl = airplane.position.y - terrainH;
+
+  const flapAngleRad = state.flapAngle * Math.PI / 180;
+  const flapNorm = state.flapAngle / 40;
+  const effectiveStallAngle = PHYSICS.stallAngle + flapAngleRad * FLAP_CONFIG.stallAngleBonus;
+  const isFlying = agl > 10 && speed > PHYSICS.stallSpeed;
+  planeState.stall = isFlying && (absAoA > effectiveStallAngle);
+
+  let liftCoeff;
+  if (absAoA < effectiveStallAngle) {
+    const flapLiftBonus = flapAngleRad * FLAP_CONFIG.liftMultiplier;
+    liftCoeff = PHYSICS.liftCoeffSlope * planeState.angleOfAttack + flapLiftBonus;
+  } else {
+    const sign = Math.sign(planeState.angleOfAttack); const excess = absAoA - effectiveStallAngle;
+    liftCoeff = sign * PHYSICS.maxLiftCoeff * Math.cos(excess * 2);
+  }
+  liftCoeff = THREE.MathUtils.clamp(liftCoeff, -PHYSICS.maxLiftCoeff * 1.5, PHYSICS.maxLiftCoeff * 1.5);
+
+  const groundEffect = agl < 15 ? 1 + (1 - agl / 15) * 0.3 : 1;
+  const liftMag = 0.5 * PHYSICS.airDensity * speed * speed * PHYSICS.wingArea * liftCoeff * groundEffect;
+  _lift.copy(_up).multiplyScalar(liftMag);
+
+  const flapDragBonus = flapAngleRad * FLAP_CONFIG.dragMultiplier;
+  const dragCoeff = PHYSICS.dragCoeffBase + PHYSICS.dragCoeffInduced * liftCoeff * liftCoeff + flapDragBonus * flapNorm;
+  if (speed > 0.01) { const dragMag = 0.5 * PHYSICS.airDensity * speed * speed * PHYSICS.wingArea * dragCoeff; _drag.copy(planeState.velocity).normalize().multiplyScalar(-dragMag); } else { _drag.set(0, 0, 0); }
+
+  const thrustMag = state.throttle * PHYSICS.maxThrust; _thrust.copy(_forward).multiplyScalar(thrustMag);
+  const pFactorYaw = -state.throttle * planeState.angleOfAttack * PHYSICS.pFactor * 0.5;
+  const pFactorRoll = -state.throttle * planeState.angleOfAttack * PHYSICS.pFactor * 0.3;
+  const windForce = state.wind.clone().multiplyScalar(0.5);
+  const gravityForce = new THREE.Vector3(0, -PHYSICS.gravity * PHYSICS.mass, 0);
+
+  _accel.copy(_thrust).add(_lift).add(_drag).add(gravityForce).add(windForce);
+  const accelVec = _accel.divideScalar(PHYSICS.mass);
+  planeState.velocity.add(accelVec.multiplyScalar(dt));
+  airplane.position.add(planeState.velocity.clone().multiplyScalar(dt));
+
+  const authority = getControlAuthority(speed);
+  const targetPitchRate = state.input.pitch * PHYSICS.pitchRate * authority;
+  const targetRollRate = state.input.roll * PHYSICS.rollRate * authority;
+  const targetYawRate = state.input.yaw * PHYSICS.yawRate * authority + pFactorYaw;
+
+  const pitchDamp = -planeState.angularVelocity.x * PHYSICS.dampingPitch;
+  const rollDamp = -planeState.angularVelocity.y * PHYSICS.dampingRoll;
+  const yawDamp = -planeState.angularVelocity.z * PHYSICS.dampingYaw;
+
+  planeState.angularVelocity.x += ((targetPitchRate - planeState.angularVelocity.x) * 3 + pitchDamp) * dt;
+  planeState.angularVelocity.y += ((targetRollRate - planeState.angularVelocity.y) * 3 + rollDamp + pFactorRoll) * dt;
+  planeState.angularVelocity.z += ((targetYawRate - planeState.angularVelocity.z) * 3 + yawDamp) * dt;
+
+  if (state.flapAngle > 0.1) {
+    const flapPitchMoment = flapAngleRad * FLAP_CONFIG.pitchMoment;
+    planeState.angularVelocity.x += flapPitchMoment * dt;
+  }
+
+  const rotVec = planeState.angularVelocity.clone().multiplyScalar(dt);
+  const rotQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(rotVec.x, rotVec.z, rotVec.y, 'YXZ'));
+  airplane.quaternion.premultiply(rotQuat); airplane.quaternion.normalize();
+
+  const bankAngle = Math.asin(THREE.MathUtils.clamp(_right.y, -1, 1));
+  
+  // === ИЗМЕНЕНО: Реалистичный поворот при крене ===
+  // Если скорость достаточна для полета и нет сваливания, самолет поворачивает в сторону крена
+  if (speed > PHYSICS.stallSpeed && !planeState.stall) {
+    // Коэффициент поворота (чем больше, тем резче вираж)
+    // ИСПРАВЛЕНИЕ БАГА 1: Изменен знак на положительный, чтобы крен вправо вызывал поворот вправо
+    const turnRate = Math.tan(bankAngle) * 9.81 / (speed + 15) * 1.8 * dt;
+    const turnQ = new THREE.Quaternion().setFromAxisAngle(_up, turnRate);
+    airplane.quaternion.premultiply(turnQ); 
+    
+    // Добавляем угловую скорость рыскания для плавности
+    // Также инвертируем знак здесь для согласованности
+    planeState.angularVelocity.z += Math.sin(bankAngle) * 2.0 * dt;
+  }
+
+  propGroup.rotation.z += state.throttle * 80 * dt;
+  const currentTerrainH = getTerrainHeight(airplane.position.x, airplane.position.z);
+  
+  // === КОЛЛИЗИЯ ДЛЯ ВПП И ШАССИ ===
+  const gearsFullyDeployed = state.gearsDeployed && state.gearsAnimation > 0.95;
+  const gearOffset = 2.2; 
+  const downVec = new THREE.Vector3(0, -1, 0).applyQuaternion(airplane.quaternion);
+  const lowestGearHeight = airplane.position.y - (gearOffset * Math.abs(downVec.y)) - (gearOffset * Math.abs(_right.y) * 0.5);
+  
+  // Проверка нахождения на ВПП (координаты полосы: x от -60 до 60, z от -1000 до 1000)
+  const onRunway = Math.abs(airplane.position.x) < 60 && Math.abs(airplane.position.z) < 1000;
+
+  // Исправление бага с застреванием: разрешаем взлет, если есть подъемная сила или ввод на набор высоты
+  const tryingToTakeOff = state.input.pitch < -0.2 || speed > 40; 
+
+  if (lowestGearHeight <= currentTerrainH + 0.2 && !tryingToTakeOff) {
+    // Если мы на ВПП и шасси выпущены -> можно катиться
+    if (onRunway && gearsFullyDeployed) {
+       airplane.position.y = currentTerrainH + gearOffset; 
+       planeState.velocity.y = 0;
+       // Трение о земле (сильнее на ВПП)
+       planeState.velocity.multiplyScalar(0.98); 
+       
+       airplane.rotation.x = THREE.MathUtils.lerp(airplane.rotation.x, 0, dt * 3);
+       airplane.rotation.z = THREE.MathUtils.lerp(airplane.rotation.z, 0, dt * 3);
+       
+       planeState.angleOfAttack = 0; 
+       planeState.stall = false;
+    } 
+    // Если мы НЕ на ВПП, но шасси выпущены и скорость маленькая -> мягкая посадка на траву
+    else if (gearsFullyDeployed && speed < 30) {
+       airplane.position.y = currentTerrainH + gearOffset;
+       planeState.velocity.y = 0;
+       planeState.velocity.multiplyScalar(0.95); // Сильное трение о траву
+       airplane.rotation.x = THREE.MathUtils.lerp(airplane.rotation.x, 0, dt * 3);
+       airplane.rotation.z = THREE.MathUtils.lerp(airplane.rotation.z, 0, dt * 3);
+    }
+    // Во всех остальных случаях (убраны шасси или высокая скорость вне ВПП) -> Краш
+    else {
+       triggerCrash();
+    }
+  }
+  
+  planeState.prevAltitude = airplane.position.y;
+}
+
+const cameraLookAt = new THREE.Vector3();
+const cockpitCamOffset = new THREE.Vector3(0, 0.9, -0.2);
+function updateCamera(dt) {
+  if (state.isCrashed) {
+    const crashOffset = new THREE.Vector3(5, 3, 5).applyQuaternion(airplane.quaternion);
+    camera.position.lerp(airplane.position.clone().add(crashOffset), dt * 2); camera.lookAt(airplane.position); return;
+  }
+  if (state.cameraMode === 'cockpit') {
+    const targetPos = cockpitCamOffset.clone().applyQuaternion(airplane.quaternion).add(airplane.position);
+    camera.position.copy(targetPos); camera.quaternion.copy(airplane.quaternion); camera.rotateX(-0.15);
+    camera.fov = THREE.MathUtils.lerp(camera.fov, 85, dt * 5);
+  } else if (state.cameraMode === 'bottom') {
+    const offset = new THREE.Vector3(0, -1.5, 0.5).applyQuaternion(airplane.quaternion);
+    camera.position.copy(airplane.position).add(offset);
+    const lookOffset = new THREE.Vector3(0, -50, 0).applyQuaternion(airplane.quaternion);
+    cameraLookAt.copy(airplane.position).add(lookOffset); camera.lookAt(cameraLookAt); camera.fov = THREE.MathUtils.lerp(camera.fov, 75, dt * 5);
+  } else if (state.cameraMode === 'gear') {
+    // === НОВОЕ: Четвертое положение камеры (на уровне задних шасси, смотрит вперед) ===
+    const offset = new THREE.Vector3(0, -1.5, 1.5).applyQuaternion(airplane.quaternion);
+    camera.position.copy(airplane.position).add(offset);
+    
+    // Смотрим строго вперед относительно корпуса
+    const lookOffset = new THREE.Vector3(0, 0, -50).applyQuaternion(airplane.quaternion);
+    cameraLookAt.copy(airplane.position).add(lookOffset);
+    camera.lookAt(cameraLookAt);
+    
+    camera.fov = THREE.MathUtils.lerp(camera.fov, 75, dt * 5);
+  } else {
+    // === ОБЩИЙ ВИД (Chase): Стиль Ace Combat ===
+    // Позиция сзади и сверху
+    const idealOffset = new THREE.Vector3(0, 12, 25);
+    // Применяем только позицию, но не вращение самолета к смещению, чтобы камера не круtilась вместе с креном
+    idealOffset.applyQuaternion(airplane.quaternion);
+    idealOffset.add(airplane.position);
+    
+    // Плавно перемещаем камеру к идеальной позиции
+    camera.position.lerp(idealOffset, 0.1);
+    
+    // Камера смотрит немного выше самолета, чтобы видеть горизонт прямо
+    const lookAtPos = airplane.position.clone();
+    lookAtPos.y += 5; 
+    // Добавляем вектор направления самолета, чтобы смотреть вперед
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(airplane.quaternion).multiplyScalar(20);
+    lookAtPos.add(fwd);
+    
+    camera.lookAt(lookAtPos);
+    
+    camera.fov = THREE.MathUtils.lerp(camera.fov, 75, dt * 5);
+  }
+  camera.updateProjectionMatrix();
+  sunLight.position.copy(airplane.position).add(new THREE.Vector3(200, 300, 100)); sunLight.target.position.copy(airplane.position);
+  const sunDir = new THREE.Vector3(0.5, 0.6, 0.3).normalize();
+  sunMesh.position.copy(camera.position).add(sunDir.clone().multiplyScalar(2500)); sunGlow.position.copy(sunMesh.position);
+  skyMat.uniforms.sunDirection.value.copy(sunDir);
+}
+
+let lastTerrainUpdate = new THREE.Vector2(0, 0);
+function updateTerrainIfNeeded() {
+  const dx = airplane.position.x - lastTerrainUpdate.x; const dz = airplane.position.z - lastTerrainUpdate.y;
+  if (Math.sqrt(dx * dx + dz * dz) > WORLD.chunkThreshold) {
+    const step = WORLD.terrainSize / 4; const cx = Math.round(airplane.position.x / step) * step; const cz = Math.round(airplane.position.z / step) * step;
+    updateTerrain(cx, cz); lastTerrainUpdate.set(cx, cz); water.position.x = cx; water.position.z = cz;
+  }
+}
+function updateClouds(dt) {
+  for (const c of clouds) {
+    c.position.x += c.userData.speed * dt;
+    if ((c.position.x - airplane.position.x)**2 + (c.position.z - airplane.position.z)**2 > 1800 * 1800) {
+      c.position.x = airplane.position.x + (Math.random() - 0.5) * 2500; c.position.z = airplane.position.z + (Math.random() - 0.5) * 2500; c.position.y = 220 + Math.random() * 250;
+    }
+  }
+}
+function updateBirds(dt) {
+  for (const b of birds) {
+    const d = b.userData; d.phase += d.speed * dt;
+    b.position.x = d.centerX + Math.cos(d.phase) * d.radius; b.position.z = d.centerZ + Math.sin(d.phase) * d.radius; b.position.y = d.baseHeight + Math.sin(d.phase * 2) * 5;
+    if ((b.position.x - airplane.position.x)**2 + (b.position.z - airplane.position.z)**2 > 800 * 800) {
+      d.centerX = airplane.position.x + (Math.random() - 0.5) * 500; d.centerZ = airplane.position.z + (Math.random() - 0.5) * 500;
+      d.baseHeight = Math.max(50, getTerrainHeight(d.centerX, d.centerZ) + 30 + Math.random() * 80);
+    }
+  }
+}
+
+const hudSpeed = document.getElementById('speed'); const hudAlt = document.getElementById('altitude'); const hudVSpeed = document.getElementById('vspeed');
+const hudHeading = document.getElementById('heading'); const hudRoll = document.getElementById('roll'); const hudThrottle = document.getElementById('throttle');
+const hudThrottleBar = document.getElementById('throttleBar'); const hudAoa = document.getElementById('aoa'); const hudAoaBar = document.getElementById('aoaBar');
+const hudWind = document.getElementById('wind'); const stallWarning = document.getElementById('stallWarning'); const groundWarning = document.getElementById('groundWarning');
+const viewIndicator = document.getElementById('viewIndicator'); const horizonInner = document.getElementById('horizonInner'); const gpwsWarningEl = document.getElementById('gpwsWarning');
+let hudUpdateTimer = 0, instrUpdateTimer = 0;
+
+function updateHUD(dt) {
+  hudUpdateTimer += dt; if (hudUpdateTimer < 0.1) return; const hudDt = hudUpdateTimer; hudUpdateTimer = 0;
+  const speed = planeState.velocity.length(); const speedKmh = speed * 3.6; const altitude = airplane.position.y;
+  const vSpeed = (altitude - planeState.prevAltitude) / hudDt;
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(airplane.quaternion);
+  let heading = Math.atan2(forward.x, -forward.z) * 180 / Math.PI; if (heading < 0) heading += 360;
+  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(airplane.quaternion);
+  const rollDeg = Math.asin(THREE.MathUtils.clamp(right.y, -1, 1)) * 180 / Math.PI;
+  const pitchDeg = Math.asin(THREE.MathUtils.clamp(forward.y, -1, 1)) * 180 / Math.PI;
+  const aoaDeg = planeState.angleOfAttack * 180 / Math.PI;
+  const terrainH = getTerrainHeight(airplane.position.x, airplane.position.z); const agl = altitude - terrainH;
+
+  hudSpeed.textContent = Math.round(speedKmh); hudAlt.textContent = Math.round(altitude);
+  hudVSpeed.textContent = (vSpeed >= 0 ? '+' : '') + Math.round(vSpeed);
+  hudHeading.textContent = Math.round(heading).toString().padStart(3, '0'); hudRoll.textContent = Math.round(rollDeg);
+  hudThrottle.textContent = Math.round(state.throttle * 100); hudThrottleBar.style.width = (state.throttle * 100) + '%';
+  hudAoa.textContent = aoaDeg.toFixed(1);
+  const aoaPercent = ((aoaDeg + 20) / 40) * 100; hudAoaBar.style.width = Math.max(0, Math.min(100, aoaPercent)) + '%';
+  hudWind.textContent = state.wind.length().toFixed(1);
+
+  if (horizonInner) {
+    const pitchPx = pitchDeg * 2.5; 
+    horizonInner.style.transform = `rotate(${-rollDeg}deg) translateY(${pitchPx}px)`;
+  }
+
+  stallWarning.classList.toggle('active', planeState.stall);
+  groundWarning.classList.toggle('active', agl < 25 && agl > 0 && speed > 15 && !state.isCrashed);
+  updateGPWS(agl, vSpeed);
+
+  instrUpdateTimer += hudDt;
+  if (instrUpdateTimer > 0.2 && state.cameraMode === 'cockpit' && !state.isCrashed) {
+    instrUpdateTimer = 0;
+    for (const instr of instruments) {
+      let val;
+      if (instr.def.key === 'speed') val = Math.round(speedKmh);
+      else if (instr.def.key === 'alt') val = Math.round(altitude);
+      else if (instr.def.key === 'hdg') val = Math.round(heading).toString().padStart(3, '0');
+      else if (instr.def.key === 'thr') val = Math.round(state.throttle * 100);
+      else if (instr.def.key === 'flaps') val = Math.round(state.flapAngle);
+
+      const { ctx, canvas, tex } = instr;
+      const color = instr.def.key === 'thr' ? '#ffaa00' : (instr.def.key === 'flaps' ? '#ffcc00' : '#00ff88');
+      ctx.fillStyle = '#0a0a0f'; ctx.fillRect(0, 0, 128, 128);
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.strokeRect(4, 4, 120, 120);
+      ctx.fillStyle = color; ctx.font = 'bold 14px Courier New'; ctx.textAlign = 'center'; ctx.fillText(instr.def.label, 64, 25);
+      ctx.font = 'bold 28px Courier New'; ctx.fillText(String(val), 64, 72);
+      ctx.font = '11px Courier New'; ctx.fillText(instr.def.unit, 64, 100);
+      tex.needsUpdate = true;
+    }
+  }
+}
+
+function updateGears(dt) {
+  const target = state.gearsDeployed ? 1.0 : 0.0;
+  state.gearsAnimation = THREE.MathUtils.lerp(state.gearsAnimation, target, dt * GEAR_CONFIG.deploySpeed);
+  const gearsBtn = document.getElementById('gearsBtn');
+  if (gearsBtn) {
+    gearsBtn.textContent = state.gearsDeployed ? "GEARS: ВЫПУЩЕНО" : "GEARS: УБРАНО";
+    gearsBtn.style.color = state.gearsDeployed ? "#00ff88" : "#ffaa00";
+    gearsBtn.style.borderColor = state.gearsDeployed ? "rgba(0, 255, 136, 0.6)" : "rgba(255, 170, 0, 0.6)";
+  }
+  for (const gear of gears) {
+    gear.userData.currentY = THREE.MathUtils.lerp(gear.userData.stowedY, gear.userData.deployedY, state.gearsAnimation);
+    gear.position.y = gear.userData.currentY;
+    gear.rotation.x = THREE.MathUtils.lerp(gear.userData.baseRotX, 0, state.gearsAnimation);
+  }
+}
+
+let flapOsc = null; let flapNoise = null; let flapGain = null;
+function initAudio() { if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } if (audioCtx.state === 'suspended') { audioCtx.resume(); } }
+function startFlapSound() {
+  initAudio(); if (!audioCtx) return; stopFlapSound(true);
+  flapOsc = audioCtx.createOscillator(); flapOsc.type = 'sawtooth'; flapOsc.frequency.value = 75;
+  const bufferSize = audioCtx.sampleRate * 2; const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0); for (let i = 0; i < bufferSize; i++) { data[i] = Math.random() * 2 - 1; }
+  flapNoise = audioCtx.createBufferSource(); flapNoise.buffer = buffer; flapNoise.loop = true;
+  const noiseFilter = audioCtx.createBiquadFilter(); noiseFilter.type = 'bandpass'; noiseFilter.frequency.value = 400; noiseFilter.Q.value = 1.5;
+  flapGain = audioCtx.createGain(); flapGain.gain.setValueAtTime(0, audioCtx.currentTime); flapGain.gain.linearRampToValueAtTime(0.12, audioCtx.currentTime + 0.15);
+  const oscFilter = audioCtx.createBiquadFilter(); oscFilter.type = 'lowpass'; oscFilter.frequency.value = 200;
+  flapOsc.connect(oscFilter); oscFilter.connect(flapGain); flapNoise.connect(noiseFilter); noiseFilter.connect(flapGain); flapGain.connect(audioCtx.destination);
+  flapOsc.start(); flapNoise.start();
+}
+function stopFlapSound(immediate = false) {
+  if (!audioCtx || !flapGain) return;
+  const releaseTime = immediate ? 0.05 : 0.3;
+  flapGain.gain.cancelScheduledValues(audioCtx.currentTime); flapGain.gain.setValueAtTime(flapGain.gain.value, audioCtx.currentTime);
+  flapGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + releaseTime);
+  setTimeout(() => { try { if (flapOsc) { flapOsc.stop(); flapOsc.disconnect(); flapOsc = null; } if (flapNoise) { flapNoise.stop(); flapNoise.disconnect(); flapNoise = null; } if (flapGain) { flapGain.disconnect(); flapGain = null; } } catch (e) {} }, releaseTime * 1000 + 50);
+}
+
+function updateFlaps(dt) {
+  const diff = state.targetFlapAngle - state.flapAngle;
+  if (Math.abs(diff) > 0.1) { state.flapAngle += diff * FLAP_CONFIG.moveSpeed * dt; state.flapAngle = THREE.MathUtils.clamp(state.flapAngle, 0, 40); }
+  else { if (state.flapMoving) { state.flapAngle = state.targetFlapAngle; state.flapMoving = false; stopFlapSound(); } }
+  const angleRad = state.flapAngle * Math.PI / 180; flapLeft.rotation.x = angleRad; flapRight.rotation.x = angleRad;
+  const flapsBtn = document.getElementById('flapsBtn');
+  if (flapsBtn) { const stageNames = ['UP', '1', '2', 'FULL']; flapsBtn.textContent = `FLAPS: ${stageNames[state.flapStage]} (${Math.round(state.flapAngle)}°)`; flapsBtn.style.color = state.flapAngle > 0 ? '#64b4ff' : '#00ff88'; }
+}
+
+function cycleFlaps() {
+  if (state.flapMoving) return; initAudio();
+  let nextStage = state.flapStage + state.flapDirection;
+  if (nextStage >= FLAP_CONFIG.angles.length) { state.flapDirection = -1; nextStage = state.flapStage - 1; }
+  else if (nextStage < 0) { state.flapDirection = 1; nextStage = state.flapStage + 1; }
+  state.flapStage = nextStage; state.targetFlapAngle = FLAP_CONFIG.angles[state.flapStage]; state.flapMoving = true; startFlapSound();
+}
+
+function updateGPWS(agl, vSpeed) {
+  if (agl > 90) { if (state.gpwsTriggered.size > 0) { state.gpwsTriggered.clear(); if (gpwsWarningEl) gpwsWarningEl.classList.remove('active'); } return; }
+  for (const alt of GPWS_ALTITUDES) {
+    if (agl <= alt && !state.gpwsTriggered.has(alt)) {
+      state.gpwsTriggered.add(alt); let text = alt.toString(); if (alt === 1) text = "ОДИН, ВЫРАВНИВАНИЕ";
+      if (gpwsWarningEl) { gpwsWarningEl.textContent = text; gpwsWarningEl.classList.add('active'); setTimeout(() => gpwsWarningEl.classList.remove('active'), 2000); }
+      speakAltitude(text);
+    }
+  }
+}
+function speakAltitude(text) {
+  if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const utterance = new SpeechSynthesisUtterance(text); utterance.lang = 'ru-RU'; utterance.rate = 1.3; utterance.pitch = 1.0; utterance.volume = 0.8; window.speechSynthesis.speak(utterance); }
+  else { console.log(`[GPWS] ${text}`); }
+}
+
+window.addEventListener('keydown', (e) => {
+  state.keys[e.code] = true;
+  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  if (e.code === 'KeyC') toggleCameraView();
+  if (e.code === 'KeyG') { state.gearsDeployed = !state.gearsDeployed; }
+  if (e.code === 'KeyF') { e.preventDefault(); cycleFlaps(); }
+  if (e.code === 'Escape') togglePause();
+});
+window.addEventListener('keyup', (e) => { state.keys[e.code] = false; });
+
+function toggleCameraView() {
+  if (state.isCrashed) return;
+  // Цикл: chase -> cockpit -> bottom -> gear -> chase
+  if (state.cameraMode === 'chase') state.cameraMode = 'cockpit';
+  else if (state.cameraMode === 'cockpit') state.cameraMode = 'bottom';
+  else if (state.cameraMode === 'bottom') state.cameraMode = 'gear';
+  else state.cameraMode = 'chase';
+  
+  cockpitGroup.visible = state.cameraMode === 'cockpit';
+  let viewText = 'ОБЩИЙ ВИД';
+  if (state.cameraMode === 'cockpit') viewText = 'ВИД ИЗ КАБИНЫ';
+  else if (state.cameraMode === 'bottom') viewText = 'ВИД СНИЗУ (БЕЛЛИ КАМ)';
+  else if (state.cameraMode === 'gear') viewText = 'ВИД С ШАССИ';
+  
+  viewIndicator.textContent = viewText; viewIndicator.classList.add('show');
+  setTimeout(() => viewIndicator.classList.remove('show'), 1500);
+}
+
+class VirtualJoystick {
+  constructor(element, knobElement) {
+    this.element = element; this.knob = knobElement; this.active = false; this.touchId = null; this.x = 0; this.y = 0; this.maxRadius = 0;
+    this._onStart = this._onStart.bind(this); this._onMove = this._onMove.bind(this); this._onEnd = this._onEnd.bind(this);
+    element.addEventListener('touchstart', this._onStart, { passive: false }); element.addEventListener('touchmove', this._onMove, { passive: false });
+    element.addEventListener('touchend', this._onEnd, { passive: false }); element.addEventListener('touchcancel', this._onEnd, { passive: false });
+    element.addEventListener('mousedown', (e) => {
+      this.active = true; this.maxRadius = element.offsetWidth / 2 - 30; this._updateFromEvent(e);
+      const moveHandler = (ev) => this._updateFromEvent(ev);
+      const upHandler = () => { this.active = false; this.x = 0; this.y = 0; this._updateKnob(); window.removeEventListener('mousemove', moveHandler); window.removeEventListener('mouseup', upHandler); };
+      window.addEventListener('mousemove', moveHandler); window.addEventListener('mouseup', upHandler);
+    });
+  }
+  _onStart(e) { e.preventDefault(); if (this.active) return; const t = e.changedTouches[0]; this.touchId = t.identifier; this.active = true; this.maxRadius = this.element.offsetWidth / 2 - 30; this._updateFromTouch(t); }
+  _onMove(e) { e.preventDefault(); if (!this.active) return; for (const t of e.changedTouches) { if (t.identifier === this.touchId) { this._updateFromTouch(t); break; } } }
+  _onEnd(e) { e.preventDefault(); for (const t of e.changedTouches) { if (t.identifier === this.touchId) { this.active = false; this.touchId = null; this.x = 0; this.y = 0; this._updateKnob(); break; } } }
+  _updateFromTouch(touch) { const rect = this.element.getBoundingClientRect(); const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2; let dx = touch.clientX - cx, dy = touch.clientY - cy; const dist = Math.sqrt(dx * dx + dy * dy); if (dist > this.maxRadius) { dx = (dx / dist) * this.maxRadius; dy = (dy / dist) * this.maxRadius; } this.x = dx / this.maxRadius; this.y = dy / this.maxRadius; this._updateKnob(); }
+  _updateFromEvent(e) { const rect = this.element.getBoundingClientRect(); const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2; let dx = e.clientX - cx, dy = e.clientY - cy; const dist = Math.sqrt(dx * dx + dy * dy); if (dist > this.maxRadius) { dx = (dx / dist) * this.maxRadius; dy = (dy / dist) * this.maxRadius; } this.x = dx / this.maxRadius; this.y = dy / this.maxRadius; this._updateKnob(); }
+  _updateKnob() { const offsetX = this.x * this.maxRadius, offsetY = this.y * this.maxRadius; this.knob.style.transform = `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px))`; }
+}
+
+const joystickLeft = new VirtualJoystick(document.getElementById('joystickLeft'), document.getElementById('knobLeft'));
+const throttleTrack = document.getElementById('throttleTrack'); const throttleHandle = document.getElementById('throttleHandle'); const throttleValue = document.getElementById('throttleValue');
+let isDraggingThrottle = false; let throttleTouchId = null;
+
+function updateThrottleFromTouch(touch) { const rect = throttleTrack.getBoundingClientRect(); let y = touch.clientY - rect.top; let pct = 1.0 - (y / rect.height); pct = Math.max(0, Math.min(1, pct)); state.throttle = pct; throttleHandle.style.bottom = (pct * 100) + '%'; throttleValue.textContent = Math.round(pct * 100) + '%'; }
+function updateThrottleFromMouse(e) { const rect = throttleTrack.getBoundingClientRect(); let y = e.clientY - rect.top; let pct = 1.0 - (y / rect.height); pct = Math.max(0, Math.min(1, pct)); state.throttle = pct; throttleHandle.style.bottom = (pct * 100) + '%'; throttleValue.textContent = Math.round(pct * 100) + '%'; }
+
+throttleTrack.addEventListener('touchstart', (e) => { e.preventDefault(); const touch = e.changedTouches[0]; throttleTouchId = touch.identifier; isDraggingThrottle = true; updateThrottleFromTouch(touch); }, { passive: false });
+window.addEventListener('touchmove', (e) => { if (!isDraggingThrottle) return; for (let i = 0; i < e.changedTouches.length; i++) { if (e.changedTouches[i].identifier === throttleTouchId) { e.preventDefault(); updateThrottleFromTouch(e.changedTouches[i]); break; } } }, { passive: false });
+window.addEventListener('touchend', (e) => { for (let i = 0; i < e.changedTouches.length; i++) { if (e.changedTouches[i].identifier === throttleTouchId) { isDraggingThrottle = false; throttleTouchId = null; break; } } }, { passive: false });
+throttleTrack.addEventListener('mousedown', (e) => { isDraggingThrottle = true; updateThrottleFromMouse(e); const moveHandler = (ev) => { if(isDraggingThrottle) { ev.preventDefault(); updateThrottleFromMouse(ev); } }; const upHandler = () => { isDraggingThrottle = false; window.removeEventListener('mousemove', moveHandler); window.removeEventListener('mouseup', upHandler); }; window.addEventListener('mousemove', moveHandler); window.addEventListener('mouseup', upHandler); });
+
+const brakeBtn = document.getElementById('brakeBtn'); const levelBtn = document.getElementById('levelBtn'); const viewBtn = document.getElementById('viewBtn');
+const yawLeftBtn = document.getElementById('yawLeftBtn'); const yawRightBtn = document.getElementById('yawRightBtn');
+const fireBtn = document.getElementById('fireBtn'); // Кнопка огня
+
+function setupActionButton(btn, onPress, onRelease) {
+  const start = (e) => { e.preventDefault(); btn.classList.add('pressed'); onPress(); };
+  const end = (e) => { e.preventDefault(); btn.classList.remove('pressed'); if (onRelease) onRelease(); };
+  btn.addEventListener('touchstart', start, { passive: false }); btn.addEventListener('touchend', end, { passive: false }); btn.addEventListener('touchcancel', end, { passive: false });
+  btn.addEventListener('mousedown', start); btn.addEventListener('mouseup', end); btn.addEventListener('mouseleave', end);
+}
+
+setupActionButton(brakeBtn, () => { state.input.brake = true; }, () => { state.input.brake = false; });
+setupActionButton(levelBtn, () => { state.isLeveling = true; }, () => { state.isLeveling = false; });
+setupActionButton(viewBtn, () => { toggleCameraView(); });
+// Обработчик кнопки FIRE
+setupActionButton(fireBtn, () => { launchMissile(); }, null);
+
+let yawInput = 0;
+setupActionButton(yawLeftBtn, () => { yawInput = -1; }, () => { yawInput = 0; });
+setupActionButton(yawRightBtn, () => { yawInput = 1; }, () => { yawInput = 0; });
+
+document.getElementById('fullscreenBtn').addEventListener('click', () => {
+  const el = document.documentElement;
+  if (!document.fullscreenElement) (el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen)?.call(el);
+  else (document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen)?.call(document);
+});
+
+const gearsBtn = document.getElementById('gearsBtn');
+if (gearsBtn) { gearsBtn.addEventListener('click', () => { state.gearsDeployed = !state.gearsDeployed; }); gearsBtn.addEventListener('touchstart', (e) => { e.preventDefault(); state.gearsDeployed = !state.gearsDeployed; }, { passive: false }); }
+
+const flapsBtn = document.getElementById('flapsBtn');
+if (flapsBtn) { flapsBtn.addEventListener('click', () => { cycleFlaps(); }); flapsBtn.addEventListener('touchstart', (e) => { e.preventDefault(); cycleFlaps(); }, { passive: false }); }
+
+// === НОВОЕ: Функция для поиска безопасной точки спавна (+200м) ===
+function getSafeSpawnPosition() {
+  // Координаты рядом с ангаром/зданием на ВПП
+  const spawnX = 85;
+  const spawnZ = 150;
+  
+  // Получаем высоту земли в этой точке
+  const groundHeight = getTerrainHeight(spawnX, spawnZ);
+  
+  // Добавляем запас высоты: было 35, стало 235 (+200 метров)
+  const safeHeight = groundHeight + 235; 
+  
+  return { x: spawnX, y: safeHeight, z: spawnZ };
+}
+
+function resetSimulation() {
+  state.isCrashed = false; 
+  state.gearsDeployed = true; // Выпущены шасси
+  state.gearsAnimation = 1.0; 
+  state.gpwsTriggered.clear();
+  state.flapStage = 0; state.flapAngle = 0; state.targetFlapAngle = 0; state.flapDirection = 1; state.flapMoving = false;
+  stopFlapSound(true);
+  if (state.crashParticles) { scene.remove(state.crashParticles); state.crashParticles = null; }
+  
+  // === ИЗМЕНЕНО: Спавн на ВПП на высоте 10м ===
+  const groundH = getTerrainHeight(0, 0);
+  airplane.position.set(0, groundH + 10, 0);
+  
+  // Поворот самолета вдоль ВПП (по оси Z в минус)
+  airplane.quaternion.setFromEuler(new THREE.Euler(0, Math.PI, 0)); 
+  
+  // === ИЗМЕНЕНО: Начальный тангаж 0 (ровно) ===
+  airplane.rotation.x = 0; 
+  airplane.rotation.z = 0; 
+  
+  propGroup.visible = true;
+  planeState.velocity.set(0, 0, 0); planeState.angularVelocity.set(0, 0, 0);
+  
+  // === ИЗМЕНЕНО: Начальная тяга 0% (двигатель выключен) ===
+  state.throttle = 0.0; 
+  throttleHandle.style.bottom = '0%'; 
+  throttleValue.textContent = '0%';
+  
+  document.getElementById('crashScreen').style.display = 'none';
+}
+
+document.getElementById('restartBtn').addEventListener('click', resetSimulation);
+document.getElementById('restartBtnTop').addEventListener('click', resetSimulation);
+
+// Обработчик включения звука
+document.getElementById('soundOverlay').addEventListener('click', initEngineSound);
+
+function updateInput() {
+  const k = state.keys; let kPitch = 0, kRoll = 0, kYaw = 0;
+  if (k['KeyW'] || k['ArrowUp']) kPitch = -1; if (k['KeyS'] || k['ArrowDown']) kPitch = 1;
+  if (k['KeyA'] || k['ArrowLeft']) kRoll = -1; if (k['KeyD'] || k['ArrowRight']) kRoll = 1;
+  if (k['KeyQ']) kYaw = -1; if (k['KeyE']) kYaw = 1;
+  const jPitch = isMobile ? joystickLeft.y : 0; const jRoll = isMobile ? joystickLeft.x : 0;
+  state.input.pitch = THREE.MathUtils.clamp(kPitch + jPitch, -1, 1);
+  state.input.roll = THREE.MathUtils.clamp(-(kRoll + jRoll), -1, 1); 
+  state.input.yaw = THREE.MathUtils.clamp(kYaw + yawInput, -1, 1);
+  if (state.isLeveling) {
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(airplane.quaternion);
+    const currentRollRad = Math.asin(THREE.MathUtils.clamp(right.y, -1, 1));
+    const correctiveRoll = -currentRollRad * 4.0;
+    state.input.roll = THREE.MathUtils.clamp(correctiveRoll, -1, 1);
+    state.input.yaw = THREE.MathUtils.clamp(state.input.yaw + (currentRollRad * 0.5), -1, 1);
+  }
+  // === ИЗМЕНЕНО: Чувствительность тяги уменьшена в 2 раза (с 0.015 до 0.0075) ===
+  if (k['ShiftLeft'] || k['ShiftRight']) state.throttle = Math.min(1, state.throttle + 0.0075);
+  if (k['ControlLeft'] || k['ControlRight']) state.throttle = Math.max(0, state.throttle - 0.0075);
+  if (k['Space'] || state.input.brake) state.throttle = Math.max(0, state.throttle - 0.04);
+  if (!isDraggingThrottle) { throttleHandle.style.bottom = (state.throttle * 100) + '%'; throttleValue.textContent = Math.round(state.throttle * 100) + '%'; }
+  if (state.cameraMode === 'cockpit' && !state.isCrashed) { yokeGroup.rotation.z = -state.input.roll * 0.5; yokeGroup.rotation.x = state.input.pitch * 0.3; }
+}
+
+function updateWind(dt) {
+  const t = state.time * 0.05;
+  state.wind.x = Math.sin(t) * 3 + Math.sin(t * 2.3) * 1.5;
+  state.wind.z = Math.cos(t * 0.7) * 2 + Math.cos(t * 1.7) * 1;
+  state.wind.y = Math.sin(t * 0.3) * 0.5;
+}
+
+window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+document.addEventListener('gesturechange', (e) => e.preventDefault());
+document.addEventListener('gestureend', (e) => e.preventDefault());
+document.addEventListener('dblclick', (e) => e.preventDefault());
+
+const clock = new THREE.Clock();
+updateTerrain(0, 0); lastTerrainUpdate.set(0, 0);
+setTimeout(() => { document.getElementById('loading').classList.add('hidden'); }, 500);
+
+// Применяем начальные настройки при загрузке
+resetSimulation();
+
+// --- НОВЫЕ СИСТЕМЫ: ВРАГ И РАКЕТЫ ---
+
+// 1. Враг
+const enemyGroup = new THREE.Group();
+const enemyBodyMat = new THREE.MeshStandardMaterial({ color: 0xaa2222, roughness: 0.4 });
+const enemyWingMat = new THREE.MeshStandardMaterial({ color: 0x881111, roughness: 0.5 });
+// Простая модель врага
+const eFuselage = new THREE.Mesh(new THREE.CapsuleGeometry(0.9, 5, 8, 16).rotateX(Math.PI / 2), enemyBodyMat);
+enemyGroup.add(eFuselage);
+const eWings = new THREE.Mesh(new THREE.BoxGeometry(12, 0.15, 1.8), enemyWingMat);
+eWings.position.set(0, -0.1, 0.3);
+enemyGroup.add(eWings);
+const eTail = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.12, 1.2), enemyWingMat);
+eTail.position.set(0, 0.1, 3.0);
+enemyGroup.add(eTail);
+const eVStab = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.8, 1.5), enemyWingMat);
+eVStab.position.set(0, 1.0, 3.0);
+enemyGroup.add(eVStab);
+
+// HP Bar врага
+const hpBarBg = new THREE.Mesh(new THREE.PlaneGeometry(4, 0.4), new THREE.MeshBasicMaterial({ color: 0x333333 }));
+hpBarBg.position.set(0, 2.5, 0);
+enemyGroup.add(hpBarBg);
+const hpBarFill = new THREE.Mesh(new THREE.PlaneGeometry(3.8, 0.3), new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+hpBarFill.position.set(0, 2.5, 0.01);
+enemyGroup.add(hpBarFill);
+
+let enemyHP = 2;
+let enemyActive = false; // Сначала враг не активен
+let enemyFirstSpawn = false; // Флаг первого появления
+let enemyRespawnTimer = 0;
+
+function spawnEnemy() {
+    enemyActive = true;
+    enemyHP = 2;
+    hpBarFill.scale.x = 1;
+    hpBarFill.material.color.setHex(0x00ff00);
+    
+    // Спавним далеко впереди
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(airplane.quaternion);
+    enemyGroup.position.copy(airplane.position).add(fwd.multiplyScalar(1500));
+    enemyGroup.position.y = Math.max(200, enemyGroup.position.y); // Не слишком низко
+    
+    enemyGroup.rotation.y = Math.PI; // Смотрит на нас (примерно)
+    scene.add(enemyGroup);
+}
+
+// 2. Ракеты
+const missiles = [];
+const missileGeo = new THREE.CylinderGeometry(0.1, 0.1, 1.5, 8).rotateX(Math.PI/2);
+const missileMat = new THREE.MeshStandardMaterial({ color: 0xdddddd });
+// Позиции крепления (2 слева, 2 справа)
+const hardpoints = [
+  new THREE.Vector3(-3, -0.3, 0.5),
+  new THREE.Vector3(-4, -0.3, 0.5),
+  new THREE.Vector3(3, -0.3, 0.5),
+  new THREE.Vector3(4, -0.3, 0.5)
+];
+
+hardpoints.forEach(pos => {
+  const m = new THREE.Mesh(missileGeo, missileMat);
+  m.position.copy(pos);
+  airplane.add(m);
+  missiles.push({ mesh: m, active: false, velocity: new THREE.Vector3(), originalPos: pos.clone() });
+});
+
+function updateAmmoUI() {
+    const activeCount = missiles.filter(m => !m.active).length;
+    document.getElementById('ammoCounter').textContent = `${activeCount}/4`;
+}
+updateAmmoUI(); // Инициализация
+
+function launchMissile() {
+  // Найти первую доступную ракету
+  const missile = missiles.find(m => !m.active);
+  if (!missile || !enemyActive) return;
+
+  missile.active = true;
+  updateAmmoUI();
+
+  // Открепить от самолета и добавить в сцену
+  const worldPos = new THREE.Vector3();
+  missile.mesh.getWorldPosition(worldPos);
+  scene.add(missile.mesh);
+  missile.mesh.position.copy(worldPos);
+  missile.mesh.quaternion.copy(airplane.quaternion);
+  
+  // Начальная скорость совпадает со скоростью самолета + ускорение
+  missile.velocity.copy(planeState.velocity).normalize().multiplyScalar(100); // Быстрый старт
+}
+
+function updateMissiles(dt) {
+  missiles.forEach(m => {
+    if (m.active) {
+      if (!enemyActive) {
+        // Если враг уничтожен, ракета летит прямо
+        m.mesh.translateZ(-200 * dt);
+      } else {
+        // Самонаведение
+        const targetPos = enemyGroup.position.clone();
+        const currentPos = m.mesh.position.clone();
+        const direction = new THREE.Vector3().subVectors(targetPos, currentPos).normalize();
+        
+        // Плавный поворот к цели
+        const targetQuat = new THREE.Quaternion();
+        const mMatrix = new THREE.Matrix4().lookAt(currentPos, currentPos.clone().add(direction), new THREE.Vector3(0,1,0));
+        targetQuat.setFromRotationMatrix(mMatrix);
+        m.mesh.quaternion.slerp(targetQuat, 5 * dt);
+        
+        m.mesh.translateZ(-150 * dt); // Скорость ракеты
+      }
+
+      // Проверка попадания
+      if (enemyActive && m.mesh.position.distanceTo(enemyGroup.position) < 5) {
+        enemyHP--;
+        m.active = false;
+        scene.remove(m.mesh);
+        m.mesh.position.copy(m.originalPos); // Вернуть на место (визуально)
+        airplane.add(m.mesh); // Прикрепить обратно
+        updateAmmoUI();
+        
+        // Эффект попадания (мигание HP бара)
+        hpBarFill.material.color.setHex(0xffffff);
+        setTimeout(() => { if(enemyActive) hpBarFill.material.color.setHex(0x00ff00); }, 100);
+
+        if (enemyHP <= 0) {
+          destroyEnemy();
+        } else {
+           // Обновить цвет HP бара
+           hpBarFill.scale.x = enemyHP / 2;
+           hpBarFill.material.color.setHex(0xffff00);
+        }
+      }
+      
+      // Удаление если улетела далеко
+      if (m.mesh.position.distanceTo(airplane.position) > 2000) {
+         m.active = false;
+         scene.remove(m.mesh);
+         updateAmmoUI();
+      }
+    }
+  });
+}
+
+function destroyEnemy() {
+  enemyActive = false;
+  scene.remove(enemyGroup);
+  // Частицы взрыва
+  const particleCount = 100;
+  const geom = new THREE.BufferGeometry();
+  const positions = new Float32Array(particleCount * 3);
+  for(let i=0; i<particleCount; i++) {
+     positions[i*3] = enemyGroup.position.x;
+     positions[i*3+1] = enemyGroup.position.y;
+     positions[i*3+2] = enemyGroup.position.z;
+  }
+  geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const mat = new THREE.PointsMaterial({ color: 0xff5500, size: 2 });
+  const explosion = new THREE.Points(geom, mat);
+  scene.add(explosion);
+  setTimeout(() => scene.remove(explosion), 2000);
+  
+  // Таймер возрождения
+  enemyRespawnTimer = 10;
+}
+
+// Звук захвата цели
+let lockOnOsc = null;
+let lockOnGain = null;
+function playLockOnSound(isLocked) {
+    if (!audioCtx) return;
+    if (isLocked) {
+        if (!lockOnOsc) {
+            lockOnOsc = audioCtx.createOscillator();
+            lockOnOsc.type = 'square';
+            lockOnOsc.frequency.value = 800;
+            lockOnGain = audioCtx.createGain();
+            lockOnGain.gain.value = 0.05;
+            lockOnOsc.connect(lockOnGain);
+            lockOnGain.connect(audioCtx.destination);
+            lockOnOsc.start();
+        }
+        // Модуляция частоты для эффекта "пиликанья"
+        const time = audioCtx.currentTime;
+        lockOnOsc.frequency.setValueAtTime(800, time);
+        lockOnOsc.frequency.linearRampToValueAtTime(1200, time + 0.1);
+        lockOnOsc.frequency.linearRampToValueAtTime(800, time + 0.2);
+    } else {
+        if (lockOnOsc) {
+            lockOnOsc.stop();
+            lockOnOsc.disconnect();
+            lockOnOsc = null;
+        }
+    }
+}
+
+function updateLockOnUI() {
+  const reticle = document.getElementById('lockOnReticle');
+  if (state.cameraMode !== 'cockpit') {
+    reticle.style.display = 'none';
+    playLockOnSound(false);
+    return;
+  }
+  
+  reticle.style.display = 'block';
+  
+  if (!enemyActive) {
+    reticle.classList.remove('locked');
+    reticle.style.opacity = '0.3';
+    reticle.querySelector('span').textContent = "NO TARGET";
+    playLockOnSound(false);
+    return;
+  }
+
+  // Проверка видимости врага
+  const camDir = new THREE.Vector3();
+  camera.getWorldDirection(camDir);
+  const enemyDir = new THREE.Vector3().subVectors(enemyGroup.position, camera.position).normalize();
+  const angle = camDir.angleTo(enemyDir);
+  
+  // Если враг в поле зрения (примерно 30 градусов) и недалеко
+  if (angle < 0.5 && camera.position.distanceTo(enemyGroup.position) < 1500) {
+    reticle.classList.add('locked');
+    reticle.style.opacity = '1';
+    reticle.querySelector('span').textContent = "LOCKED";
+    playLockOnSound(true);
+  } else {
+    reticle.classList.remove('locked');
+    reticle.style.opacity = '0.5';
+    reticle.querySelector('span').textContent = "SEARCHING";
+    playLockOnSound(false);
+  }
+}
+
+// Индикатор направления на врага
+function updateEnemyIndicator() {
+    const indicator = document.getElementById('enemyIndicator');
+    if (!enemyActive || state.isCrashed) {
+        indicator.style.display = 'none';
+        return;
+    }
+
+    // Получаем направление от камеры к врагу в локальном пространстве камеры
+    const enemyLocalPos = enemyGroup.position.clone().sub(camera.position);
+    enemyLocalPos.applyQuaternion(camera.quaternion.clone().invert());
+    
+    // Угол в плоскости экрана (atan2(x, y) дает угол от вертикали)
+    // Мы используем -x, чтобы стрелка указывала правильно при повороте камеры
+    const angle = Math.atan2(-enemyLocalPos.x, -enemyLocalPos.y); 
+    
+    // Расстояние до края экрана
+    const cx = window.innerWidth / 2;
+    const cy = window.innerHeight / 2;
+    const radius = Math.min(cx, cy) - 40; // Отступ от края
+    
+    const indX = cx + Math.sin(angle) * radius;
+    const indY = cy + Math.cos(angle) * radius;
+    
+    indicator.style.display = 'block';
+    // Центрируем элемент (ширина 0, но border создает форму)
+    // Смещение нужно подобрать под размер border
+    indicator.style.left = (indX) + 'px'; 
+    indicator.style.top = (indY) + 'px';
+    // Вращаем саму стрелку. Добавляем PI, так как CSS border-bottom смотрит вверх, а нам нужно вниз к центру?
+    // Нет, atan2 уже дал нам направление ОТ центра.
+    // Стрелка должна указывать НА врага.
+    indicator.style.transform = `translate(-50%, -100%) rotate(${angle}rad)`;
+}
+
+// Управление паузой
+function togglePause() {
+    state.isPaused = !state.isPaused;
+    const pauseScreen = document.getElementById('pauseScreen');
+    if (state.isPaused) {
+        pauseScreen.style.display = 'flex';
+    } else {
+        pauseScreen.style.display = 'none';
+        clock.getDelta(); // Сброс дельты времени, чтобы не было скачка
+    }
+}
+
+document.getElementById('pauseBtn').addEventListener('click', togglePause);
+document.getElementById('resumeBtn').addEventListener('click', togglePause);
+
+function animate() {
+  requestAnimationFrame(animate);
+  
+  if (state.isPaused) return;
+
+  const dt = Math.min(clock.getDelta(), 0.05);
+  state.time += dt;
+  updateInput(); updateWind(dt); updatePlanePhysics(dt); updateCamera(dt);
+  updateTerrainIfNeeded(); updateClouds(dt); updateBirds(dt);
+  water.material.color.setHSL(0.58, 0.5, 0.3 + Math.sin(state.time * 0.5) * 0.02);
+  updateHUD(dt); updateGears(dt); updateFlaps(dt);
+  updateEngineSound(dt); // Обновляем звук двигателя
+  
+  // Логика спавна врага
+  const altitude = airplane.position.y;
+  if (!enemyFirstSpawn && altitude > 100) {
+      enemyFirstSpawn = true;
+      spawnEnemy();
+  } else if (!enemyActive && enemyFirstSpawn) {
+      enemyRespawnTimer -= dt;
+      if (enemyRespawnTimer <= 0) {
+          spawnEnemy();
+      }
+  }
+
+  // Обновление новых систем
+  updateMissiles(dt);
+  updateLockOnUI();
+  updateEnemyIndicator();
+  
+  // HP Bar всегда смотрит на камеру
+  if (enemyActive) {
+     hpBarBg.lookAt(camera.position);
+     hpBarFill.lookAt(camera.position);
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+
+console.log('%c✈ Авиасимулятор запущен', 'color: #00ff88; font-size: 14px; font-weight: bold');
+</script>
+</body>
+</html>
